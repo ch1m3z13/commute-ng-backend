@@ -47,7 +47,7 @@ router.get('/search', authenticateToken, async (req: AuthenticatedRequest, res: 
     }
 
     const commutes = await commuteService.searchCommutes(from as string, to as string);
-    return res.json(commutes);
+    return res.json({ commutes });
   } catch (error) {
     console.error('Error searching commutes:', error);
     return res.status(500).json({ error: 'Failed to search commutes' });

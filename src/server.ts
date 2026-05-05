@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import 'dotenv/config';
 
 import { config } from './config/index.js';
+import { featureFlags } from './config/featureFlags.js';
 import { initializeFirebase } from './config/firebase.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import {
@@ -16,7 +17,9 @@ import {
   verificationRouter,
 } from './routes/index.js';
 
-initializeFirebase();
+if (featureFlags.auth.provider === 'firebase' || featureFlags.database.provider === 'firestore') {
+  initializeFirebase();
+}
 
 const app = express();
 

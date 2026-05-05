@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { auth } from '../config/firebase.js';
+import { featureFlags } from '../config/featureFlags.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -9,56 +9,60 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+async function firebaseAuthenticate(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const { authenticateToken: fn } = await import('./auth.firebase.js');
+  return fn(req, res, next);
+}
+
+async function supabaseAuthenticate(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const { authenticateToken: fn } = await import('./auth.supabase.js');
+  return fn(req, res, next);
+}
+
+async function firebaseOptionalAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const { optionalAuth: fn } = await import('./auth.firebase.js');
+  return fn(req, res, next);
+}
+
+async function supabaseOptionalAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const { optionalAuth: fn } = await import('./auth.supabase.js');
+  return fn(req, res, next);
+}
+
 export async function authenticateToken(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid authorization header' });
+  if (featureFlags.auth.provider === 'supabase') {
+    return supabaseAuthenticate(req, res, next);
   }
-
-  const idToken = authHeader.substring(7);
-
-  try {
-    const decodedToken = await auth.verifyIdToken(idToken);
-    req.user = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      email_verified: decodedToken.email_verified,
-    };
-    next();
-  } catch (error) {
-    console.error('Token verification failed:', error);
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
+  return firebaseAuthenticate(req, res, next);
 }
 
-export function optionalAuth(
+export async function optionalAuth(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next();
+  if (featureFlags.auth.provider === 'supabase') {
+    return supabaseOptionalAuth(req, res, next);
   }
-
-  const idToken = authHeader.substring(7);
-
-  auth.verifyIdToken(idToken)
-    .then((decodedToken) => {
-      req.user = {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-        email_verified: decodedToken.email_verified,
-      };
-      next();
-    })
-    .catch(() => {
-      next();
-    });
+  return firebaseOptionalAuth(req, res, next);
 }
