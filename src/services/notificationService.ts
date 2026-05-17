@@ -1,82 +1,69 @@
-import { getFirestore, Firestore, FieldValue } from 'firebase-admin/firestore';
+import { getDb } from '../config/database.js';
 import { Notification } from '../models/types.js';
+import { randomUUID } from 'node:crypto';
 
-let db: Firestore;
-
-function getDb(): Firestore {
-  if (!db) {
-    db = getFirestore();
-  }
-  return db;
-}
-
-function toNotification(id: string, data: Record<string, unknown>): Notification {
-  return { id, ...data } as Notification;
+function toNotification(row: Record<string, unknown>): Notification {
+  return {
+    ...row,
+    read: Boolean(row.read),
+  } as unknown as Notification;
 }
 
 export class NotificationService {
   async getNotifications(userId: string): Promise<Notification[]> {
-    const snapshot = await getDb().collection('users').doc(userId).collection('notifications').get();
-    return snapshot.docs.map((d) => toNotification(d.id, d.data() as Record<string, unknown>));
+    const rows = getDb().prepare('SELECT * FROM notifications WHERE recipientUid = ? ORDER BY createdAt DESC').all(userId) as Record<string, unknown>[];
+    return rows.map(toNotification);
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    const snapshot = await getDb().collection('users').doc(userId).collection('notifications')
-      .where('read', '==', false)
-      .get();
-    return snapshot.size;
+    const row = getDb().prepare('SELECT COUNT(*) as count FROM notifications WHERE recipientUid = ? AND read = 0').get(userId) as { count: number };
+    return row.count;
   }
 
   async createNotification(
     recipientUid: string,
     data: Omit<Notification, 'id' | 'createdAt' | 'read'>
   ): Promise<Notification> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
     const notifData = {
-      ...data,
-      read: false,
-      createdAt: FieldValue.serverTimestamp(),
+      id,
+      recipientUid,
+      type: data.type,
+      rideId: data.rideId || null,
+      commuteId: data.commuteId || null,
+      actorUid: data.actorUid,
+      actorName: data.actorName,
+      actorPhoto: data.actorPhoto || null,
+      startPoint: data.startPoint || null,
+      destination: data.destination || null,
+      departureTime: data.departureTime || null,
+      read: 0,
+      createdAt: now,
     };
 
-    const docRef = await getDb().collection('users').doc(recipientUid).collection('notifications').add(notifData);
-    return { id: docRef.id, ...notifData } as unknown as Notification;
+    getDb().prepare(`
+      INSERT INTO notifications (id, recipientUid, type, rideId, commuteId, actorUid, actorName, actorPhoto, startPoint, destination, departureTime, read, createdAt)
+      VALUES (@id, @recipientUid, @type, @rideId, @commuteId, @actorUid, @actorName, @actorPhoto, @startPoint, @destination, @departureTime, @read, @createdAt)
+    `).run(notifData);
+
+    return { ...notifData, read: false } as unknown as Notification;
   }
 
   async markAsRead(userId: string, notificationId: string): Promise<void> {
-    await getDb().collection('users').doc(userId).collection('notifications').doc(notificationId).update({
-      read: true,
-    });
+    getDb().prepare('UPDATE notifications SET read = 1 WHERE id = ? AND recipientUid = ?').run(notificationId, userId);
   }
 
   async markAllAsRead(userId: string): Promise<void> {
-    const snapshot = await getDb().collection('users').doc(userId).collection('notifications')
-      .where('read', '==', false)
-      .get();
-
-    if (snapshot.empty) return;
-
-    const batch = getDb().batch();
-    snapshot.docs.forEach((d) => {
-      batch.update(d.ref, { read: true });
-    });
-
-    await batch.commit();
+    getDb().prepare('UPDATE notifications SET read = 1 WHERE recipientUid = ? AND read = 0').run(userId);
   }
 
   async deleteNotification(userId: string, notificationId: string): Promise<void> {
-    await getDb().collection('users').doc(userId).collection('notifications').doc(notificationId).delete();
+    getDb().prepare('DELETE FROM notifications WHERE id = ? AND recipientUid = ?').run(notificationId, userId);
   }
 
   async deleteAllNotifications(userId: string): Promise<void> {
-    const snapshot = await getDb().collection('users').doc(userId).collection('notifications').get();
-
-    if (snapshot.empty) return;
-
-    const batch = getDb().batch();
-    snapshot.docs.forEach((d) => {
-      batch.delete(d.ref);
-    });
-
-    await batch.commit();
+    getDb().prepare('DELETE FROM notifications WHERE recipientUid = ?').run(userId);
   }
 
   async createRideRequestNotification(

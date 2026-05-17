@@ -1,60 +1,63 @@
-import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { getDb } from '../config/database.js';
 import { Ride } from '../models/types.js';
 import { userService } from './userService.js';
+import { randomUUID } from 'node:crypto';
 
-let db: Firestore;
-
-function getDb(): Firestore {
-  if (!db) {
-    db = getFirestore();
-  }
-  return db;
-}
-
-function toRide(id: string, data: Record<string, unknown>): Ride {
-  return { id, ...data } as Ride;
+function toRide(row: Record<string, unknown>): Ride {
+  return row as unknown as Ride;
 }
 
 export class RideService {
   async getRide(rideId: string): Promise<Ride | null> {
-    const rideDoc = await getDb().collection('rides').doc(rideId).get();
-    if (!rideDoc.exists) return null;
-    return toRide(rideDoc.id, rideDoc.data() as Record<string, unknown>);
+    const row = getDb().prepare('SELECT * FROM rides WHERE id = ?').get(rideId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return toRide(row);
   }
 
   async getRidesForPassenger(passengerUid: string): Promise<Ride[]> {
-    const snapshot = await getDb().collection('rides')
-      .where('passengerUid', '==', passengerUid)
-      .orderBy('createdAt', 'desc')
-      .get();
-    return snapshot.docs.map((d) => toRide(d.id, d.data() as Record<string, unknown>));
+    const rows = getDb().prepare('SELECT * FROM rides WHERE passengerUid = ? ORDER BY createdAt DESC').all(passengerUid) as Record<string, unknown>[];
+    return rows.map(toRide);
   }
 
   async getRidesForDriver(driverUid: string): Promise<Ride[]> {
-    const snapshot = await getDb().collection('rides')
-      .where('driverUid', '==', driverUid)
-      .orderBy('createdAt', 'desc')
-      .get();
-    return snapshot.docs.map((d) => toRide(d.id, d.data() as Record<string, unknown>));
+    const rows = getDb().prepare('SELECT * FROM rides WHERE driverUid = ? ORDER BY createdAt DESC').all(driverUid) as Record<string, unknown>[];
+    return rows.map(toRide);
   }
 
   async getRidesForCommute(commuteId: string): Promise<Ride[]> {
-    const snapshot = await getDb().collection('rides')
-      .where('commuteId', '==', commuteId)
-      .orderBy('createdAt', 'desc')
-      .get();
-    return snapshot.docs.map((d) => toRide(d.id, d.data() as Record<string, unknown>));
+    const rows = getDb().prepare('SELECT * FROM rides WHERE commuteId = ? ORDER BY createdAt DESC').all(commuteId) as Record<string, unknown>[];
+    return rows.map(toRide);
   }
 
   async createRide(data: Omit<Ride, 'id' | 'createdAt'>): Promise<Ride> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
     const rideData = {
-      ...data,
-      status: 'pending' as const,
-      createdAt: new Date().toISOString(),
+      id,
+      commuteId: data.commuteId,
+      driverUid: data.driverUid,
+      passengerUid: data.passengerUid,
+      passengerName: data.passengerName || null,
+      passengerPhoto: data.passengerPhoto || null,
+      startPoint: data.startPoint,
+      destination: data.destination,
+      departureTime: data.departureTime,
+      seatsAvailable: data.seatsAvailable,
+      carMake: data.carMake || null,
+      carModel: data.carModel || null,
+      carYear: data.carYear || null,
+      plateNumber: data.plateNumber || null,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
     };
 
-    const docRef = await getDb().collection('rides').add(rideData);
-    return { id: docRef.id, ...rideData } as Ride;
+    getDb().prepare(`
+      INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, passengerPhoto, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, createdAt, updatedAt)
+      VALUES (@id, @commuteId, @driverUid, @passengerUid, @passengerName, @passengerPhoto, @startPoint, @destination, @departureTime, @seatsAvailable, @carMake, @carModel, @carYear, @plateNumber, @status, @createdAt, @updatedAt)
+    `).run(rideData);
+
+    return { ...rideData } as unknown as Ride;
   }
 
   async requestRide(
@@ -74,7 +77,7 @@ export class RideService {
       plateNumber?: string;
     }
   ): Promise<Ride> {
-    const ride = await this.createRide({
+    return this.createRide({
       commuteId,
       driverUid: commuteData.driverUid,
       passengerUid,
@@ -90,8 +93,6 @@ export class RideService {
       plateNumber: commuteData.plateNumber,
       status: 'pending',
     });
-
-    return ride;
   }
 
   async updateRideStatus(
@@ -107,11 +108,7 @@ export class RideService {
       throw new Error('Unauthorized to update this ride');
     }
 
-    await getDb().collection('rides').doc(rideId).update({
-      status,
-      updatedAt: new Date().toISOString(),
-    });
-
+    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run(status, new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -123,15 +120,11 @@ export class RideService {
       throw new Error('Only the driver can accept rides');
     }
 
-    if (ride.seatsAvailable <= 0) {
+    if ((ride.seatsAvailable || 0) <= 0) {
       throw new Error('No seats available');
     }
 
-    await getDb().collection('rides').doc(rideId).update({
-      status: 'accepted',
-      updatedAt: new Date().toISOString(),
-    });
-
+    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('accepted', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -143,11 +136,7 @@ export class RideService {
       throw new Error('Only the driver can reject rides');
     }
 
-    await getDb().collection('rides').doc(rideId).update({
-      status: 'rejected',
-      updatedAt: new Date().toISOString(),
-    });
-
+    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('rejected', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -159,11 +148,7 @@ export class RideService {
       throw new Error('Only participants can mark ride as complete');
     }
 
-    await getDb().collection('rides').doc(rideId).update({
-      status: 'completed',
-      updatedAt: new Date().toISOString(),
-    });
-
+    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('completed', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -176,11 +161,7 @@ export class RideService {
       throw new Error('Unauthorized to cancel this ride');
     }
 
-    await getDb().collection('rides').doc(rideId).update({
-      status: 'cancelled',
-      updatedAt: new Date().toISOString(),
-    });
-
+    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -193,7 +174,7 @@ export class RideService {
       throw new Error('Unauthorized to delete this ride');
     }
 
-    await getDb().collection('rides').doc(rideId).delete();
+    getDb().prepare('DELETE FROM rides WHERE id = ?').run(rideId);
     return true;
   }
 }

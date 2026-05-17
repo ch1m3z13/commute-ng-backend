@@ -26,13 +26,6 @@ export function errorHandler(
     });
   }
 
-  if (err.name === 'FirebaseError' || err.message.includes('Firebase')) {
-    return res.status(500).json({
-      error: 'Database operation failed',
-      code: 'DATABASE_ERROR',
-    });
-  }
-
   return res.status(500).json({
     error: 'Internal server error',
     code: 'INTERNAL_ERROR',

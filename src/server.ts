@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import 'dotenv/config';
 
 import { config } from './config/index.js';
-import { initializeFirebase } from './config/firebase.js';
+import { initializeDatabase } from './config/database.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import {
   usersRouter,
@@ -16,7 +16,7 @@ import {
   verificationRouter,
 } from './routes/index.js';
 
-initializeFirebase();
+initializeDatabase();
 
 const app = express();
 

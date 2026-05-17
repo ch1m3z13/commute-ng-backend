@@ -1,11 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { auth } from '../config/firebase.js';
+import { verifyJwt } from '../config/auth.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
     uid: string;
     email?: string;
-    email_verified?: boolean;
   };
 }
 
@@ -23,11 +22,13 @@ export async function authenticateToken(
   const idToken = authHeader.substring(7);
 
   try {
-    const decodedToken = await auth.verifyIdToken(idToken);
+    const decoded = verifyJwt(idToken) as { uid: string; email?: string } | null;
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
     req.user = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      email_verified: decodedToken.email_verified,
+      uid: decoded.uid,
+      email: decoded.email,
     };
     next();
   } catch (error) {
@@ -48,17 +49,12 @@ export function optionalAuth(
   }
 
   const idToken = authHeader.substring(7);
-
-  auth.verifyIdToken(idToken)
-    .then((decodedToken) => {
-      req.user = {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-        email_verified: decodedToken.email_verified,
-      };
-      next();
-    })
-    .catch(() => {
-      next();
-    });
+  const decoded = verifyJwt(idToken) as { uid: string; email?: string } | null;
+  if (decoded) {
+    req.user = {
+      uid: decoded.uid,
+      email: decoded.email,
+    };
+  }
+  next();
 }

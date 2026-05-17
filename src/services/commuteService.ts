@@ -1,25 +1,21 @@
-import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { getDb } from '../config/database.js';
 import { Commute } from '../models/types.js';
 import { userService } from './userService.js';
+import { randomUUID } from 'node:crypto';
 
-let db: Firestore;
-
-function getDb(): Firestore {
-  if (!db) {
-    db = getFirestore();
-  }
-  return db;
-}
-
-function toCommute(id: string, data: Record<string, unknown>): Commute {
-  return { id, ...data } as Commute;
+function toCommute(row: Record<string, unknown>): Commute {
+  return {
+    ...row,
+    recurring: Boolean(row.recurring),
+    daysOfWeek: row.daysOfWeek ? JSON.parse(row.daysOfWeek as string) : undefined,
+  } as unknown as Commute;
 }
 
 export class CommuteService {
   async getCommute(commuteId: string): Promise<Commute | null> {
-    const commuteDoc = await getDb().collection('commutes').doc(commuteId).get();
-    if (!commuteDoc.exists) return null;
-    return toCommute(commuteDoc.id, commuteDoc.data() as Record<string, unknown>);
+    const row = getDb().prepare('SELECT * FROM commutes WHERE id = ?').get(commuteId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return toCommute(row);
   }
 
   async getCommutes(filters: {
@@ -29,49 +25,72 @@ export class CommuteService {
     startPoint?: string;
     destination?: string;
   }): Promise<Commute[]> {
-    let query: FirebaseFirestore.Query = getDb().collection('commutes');
+    const conditions: string[] = [];
+    const params: Record<string, unknown> = {};
 
     if (filters.authorUid) {
-      query = query.where('authorUid', '==', filters.authorUid);
+      conditions.push('authorUid = @authorUid');
+      params.authorUid = filters.authorUid;
     }
     if (filters.type) {
-      query = query.where('type', '==', filters.type);
+      conditions.push('type = @type');
+      params.type = filters.type;
     }
     if (filters.status) {
-      query = query.where('status', '==', filters.status);
+      conditions.push('status = @status');
+      params.status = filters.status;
     }
 
-    query = query.orderBy('createdAt', 'desc');
+    let query = 'SELECT * FROM commutes';
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    query += ' ORDER BY createdAt DESC';
 
-    const snapshot = await query.get();
-    let commutes: Commute[] = snapshot.docs.map((d) => toCommute(d.id, d.data() as Record<string, unknown>));
+    const rows = getDb().prepare(query).all(params) as Record<string, unknown>[];
+    let commutes = rows.map(toCommute);
 
     if (filters.startPoint) {
-      commutes = commutes.filter((c: Commute) =>
-        c.startPoint.toLowerCase().includes(filters.startPoint!.toLowerCase())
-      );
+      const search = filters.startPoint.toLowerCase();
+      commutes = commutes.filter((c) => c.startPoint.toLowerCase().includes(search));
     }
-
     if (filters.destination) {
-      commutes = commutes.filter((c: Commute) =>
-        c.destination.toLowerCase().includes(filters.destination!.toLowerCase())
-      );
+      const search = filters.destination.toLowerCase();
+      commutes = commutes.filter((c) => c.destination.toLowerCase().includes(search));
     }
 
     return commutes;
   }
 
   async createCommute(authorUid: string, data: Omit<Commute, 'id' | 'authorUid' | 'createdAt'>): Promise<Commute> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
     const commuteData = {
+      id,
       authorUid,
-      ...data,
+      startPoint: data.startPoint,
+      destination: data.destination,
+      departureTime: data.departureTime,
+      seatsAvailable: data.seatsAvailable,
+      carMake: data.carMake || null,
+      carModel: data.carModel || null,
+      carYear: data.carYear || null,
+      plateNumber: data.plateNumber || null,
       type: data.type || 'offer',
       status: data.status || 'active',
-      createdAt: new Date().toISOString(),
+      shift: data.shift || null,
+      recurring: data.recurring ? 1 : 0,
+      daysOfWeek: data.daysOfWeek ? JSON.stringify(data.daysOfWeek) : null,
+      createdAt: now,
+      updatedAt: now,
     };
 
-    const docRef = await getDb().collection('commutes').add(commuteData);
-    return { id: docRef.id, ...commuteData } as Commute;
+    getDb().prepare(`
+      INSERT INTO commutes (id, authorUid, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, type, status, shift, recurring, daysOfWeek, createdAt, updatedAt)
+      VALUES (@id, @authorUid, @startPoint, @destination, @departureTime, @seatsAvailable, @carMake, @carModel, @carYear, @plateNumber, @type, @status, @shift, @recurring, @daysOfWeek, @createdAt, @updatedAt)
+    `).run(commuteData);
+
+    return { ...commuteData, id, recurring: Boolean(commuteData.recurring), daysOfWeek: data.daysOfWeek } as unknown as Commute;
   }
 
   async updateCommute(commuteId: string, uid: string, data: Partial<Commute>): Promise<Commute | null> {
@@ -83,11 +102,20 @@ export class CommuteService {
       throw new Error('Unauthorized: You can only update your own commutes');
     }
 
-    await getDb().collection('commutes').doc(commuteId).update({
-      ...data,
-      updatedAt: new Date().toISOString(),
-    });
+    const sets: string[] = [];
+    const values: Record<string, unknown> = { id: commuteId, updatedAt: new Date().toISOString() };
 
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined && key !== 'id' && key !== 'authorUid') {
+        sets.push(`${key} = @${key}`);
+        values[key] = value;
+      }
+    }
+
+    if (sets.length === 0) return commute;
+
+    sets.push('updatedAt = @updatedAt');
+    getDb().prepare(`UPDATE commutes SET ${sets.join(', ')} WHERE id = @id`).run(values);
     return this.getCommute(commuteId);
   }
 
@@ -100,20 +128,18 @@ export class CommuteService {
       throw new Error('Unauthorized: You can only delete your own commutes');
     }
 
-    await getDb().collection('commutes').doc(commuteId).delete();
+    getDb().prepare('DELETE FROM commutes WHERE id = ?').run(commuteId);
     return true;
   }
 
   async searchCommutes(startPoint: string, destination: string): Promise<Commute[]> {
-    const snapshot = await getDb().collection('commutes')
-      .where('type', '==', 'offer')
-      .where('status', '==', 'active')
-      .orderBy('createdAt', 'desc')
-      .get();
+    const rows = getDb().prepare(
+      "SELECT * FROM commutes WHERE type = 'offer' AND status = 'active' ORDER BY createdAt DESC"
+    ).all() as Record<string, unknown>[];
 
-    const commutes: Commute[] = snapshot.docs.map((d) => toCommute(d.id, d.data() as Record<string, unknown>));
+    const commutes = rows.map(toCommute);
 
-    return commutes.filter((c: Commute) => {
+    return commutes.filter((c) => {
       const startMatch = startPoint
         ? c.startPoint.toLowerCase().includes(startPoint.toLowerCase())
         : true;

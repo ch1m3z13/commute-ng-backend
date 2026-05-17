@@ -6,8 +6,8 @@ Express.js API backend for CommuteNG - Exclusive commuting for Abuja professiona
 
 - **Runtime:** Node.js with TypeScript
 - **Framework:** Express.js
-- **Database:** Firebase Firestore
-- **Authentication:** Firebase Auth (ID tokens)
+- **Database:** SQLite (via better-sqlite3)
+- **Authentication:** JWT (jsonwebtoken) with bcrypt password hashing
 - **Validation:** Zod
 
 ## Project Structure
@@ -15,10 +15,11 @@ Express.js API backend for CommuteNG - Exclusive commuting for Abuja professiona
 ```
 src/
 ├── config/
-│   ├── firebase.ts      # Firebase Admin SDK initialization
-│   └── index.ts        # Environment configuration
+│   ├── auth.ts          # JWT & bcrypt helpers
+│   ├── database.ts      # SQLite initialization & schema
+│   └── index.ts         # Environment configuration
 ├── middleware/
-│   ├── auth.ts          # Firebase token authentication
+│   ├── auth.ts          # JWT authentication
 │   └── errorHandler.ts  # Global error handling
 ├── models/
 │   └── types.ts         # TypeScript interfaces
@@ -28,7 +29,7 @@ src/
 │   ├── index.ts          # Route exports
 │   ├── notifications.ts  # Notifications API
 │   ├── rides.ts         # Ride bookings API
-│   ├── users.ts         # User profiles API
+│   ├── users.ts         # User profiles + auth API
 │   └── verification.ts  # Verification status API
 ├── services/
 │   ├── chatService.ts
@@ -41,9 +42,13 @@ src/
 
 ## API Endpoints
 
+### Auth (`/api/users`)
+- `POST /users/register` - Register with email, password, displayName. Returns `{ token, uid }`.
+- `POST /users/login` - Login with email + password. Returns `{ token, uid }`.
+
 ### Users (`/api/users`)
 - `GET /users/me` - Get current user profile
-- `POST /users` - Create user profile
+- `POST /users` - Create user profile (after OAuth or manual identity setup)
 - `PATCH /users/me` - Update current user
 - `PATCH /users/me/vehicle` - Update vehicle info
 - `PATCH /users/me/phone` - Update phone number
@@ -93,10 +98,7 @@ src/
    cp .env.example .env
    ```
 
-2. Configure Firebase:
-   - Create a Firebase project
-   - Generate a service account JSON and set `FIREBASE_SERVICE_ACCOUNT` in `.env`
-   - Copy your Firebase app config values
+2. Set a strong `JWT_SECRET` in `.env`.
 
 3. Install dependencies:
    ```bash
@@ -108,13 +110,15 @@ src/
    npm run dev
    ```
 
+The SQLite database file will be created automatically at the path specified by `DB_PATH`.
+
 ## Authentication
 
-All API endpoints (except `/health`) require Firebase ID token authentication.
+All API endpoints (except `/health`, `/api/users/register`, and `/api/users/login`) require JWT authentication.
 
 Include the token in the `Authorization` header:
 ```
-Authorization: Bearer <firebase_id_token>
+Authorization: Bearer <jwt-token>
 ```
 
 ## Scripts

@@ -5,7 +5,7 @@ export interface UserProfile {
   mobileNumber?: string;
   nin?: string;
   company?: string;
-  isVerified: boolean;
+  isVerified: boolean | number;
   rating: number;
   role: 'executive' | 'admin';
   photoURL?: string;
@@ -77,7 +77,7 @@ export interface Notification {
   startPoint: string;
   destination: string;
   departureTime: string;
-  read: boolean;
+  read: boolean | number;
   createdAt?: string;
   scheduledFor?: string;
 }

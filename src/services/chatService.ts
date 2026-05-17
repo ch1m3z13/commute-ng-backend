@@ -1,25 +1,15 @@
-import { getFirestore, Firestore, FieldValue } from 'firebase-admin/firestore';
+import { getDb } from '../config/database.js';
 import { ChatMessage } from '../models/types.js';
+import { randomUUID } from 'node:crypto';
 
-let db: Firestore;
-
-function getDb(): Firestore {
-  if (!db) {
-    db = getFirestore();
-  }
-  return db;
-}
-
-function toMessage(id: string, data: Record<string, unknown>): ChatMessage {
-  return { id, ...data } as ChatMessage;
+function toMessage(row: Record<string, unknown>): ChatMessage {
+  return row as unknown as ChatMessage;
 }
 
 export class ChatService {
   async getMessages(rideId: string): Promise<ChatMessage[]> {
-    const snapshot = await getDb().collection('rides').doc(rideId).collection('messages')
-      .orderBy('createdAt', 'asc')
-      .get();
-    return snapshot.docs.map((d) => toMessage(d.id, d.data() as Record<string, unknown>));
+    const rows = getDb().prepare('SELECT * FROM chat_messages WHERE rideId = ? ORDER BY createdAt ASC').all(rideId) as Record<string, unknown>[];
+    return rows.map(toMessage);
   }
 
   async sendMessage(
@@ -29,24 +19,30 @@ export class ChatService {
     senderPhoto: string | null,
     text: string
   ): Promise<ChatMessage> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
     const messageData = {
+      id,
+      rideId,
       senderUid,
       senderName,
       senderPhoto: senderPhoto ?? null,
       text,
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt: now,
     };
 
-    const docRef = await getDb().collection('rides').doc(rideId).collection('messages').add(messageData);
-    return { id: docRef.id, ...messageData } as unknown as ChatMessage;
+    getDb().prepare(`
+      INSERT INTO chat_messages (id, rideId, senderUid, senderName, senderPhoto, text, createdAt)
+      VALUES (@id, @rideId, @senderUid, @senderName, @senderPhoto, @text, @createdAt)
+    `).run(messageData);
+
+    return messageData as unknown as ChatMessage;
   }
 
   async canAccessChat(rideId: string, uid: string): Promise<boolean> {
-    const rideDoc = await getDb().collection('rides').doc(rideId).get();
-    if (!rideDoc.exists) return false;
-
-    const rideData = rideDoc.data() as Record<string, string>;
-    return rideData.driverUid === uid || rideData.passengerUid === uid;
+    const ride = getDb().prepare('SELECT driverUid, passengerUid FROM rides WHERE id = ?').get(rideId) as { driverUid: string; passengerUid: string } | undefined;
+    if (!ride) return false;
+    return ride.driverUid === uid || ride.passengerUid === uid;
   }
 }
 
