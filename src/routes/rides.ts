@@ -2,8 +2,9 @@ import { Router, Response } from 'express';
 import { AuthenticatedRequest, authenticateToken } from '../middleware/auth.js';
 import { rideService } from '../services/rideService.js';
 import { notificationService } from '../services/notificationService.js';
-import { userService } from '../services/userService.js';
-import { commuteService } from '../services/commuteService.js';
+import { userService } from './../services/userService.js';
+import { commuteService } from './../services/commuteService.js';
+import { geocodingService } from './../services/geocodingService.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -68,6 +69,12 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
       return res.status(400).json({ error: 'Commute is not available' });
     }
 
+    // Check capacity
+    const seatsRemaining = commute.seatsRemaining ?? commute.seatsAvailable;
+    if (seatsRemaining <= 0) {
+      return res.status(400).json({ error: 'No seats available on this commute' });
+    }
+
     const user = await userService.getUser(req.user!.uid);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -88,7 +95,9 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
         carModel: commute.carModel,
         carYear: commute.carYear,
         plateNumber: commute.plateNumber,
-      }
+      },
+      req.body.matchScore,
+      req.body.detourMeters,
     );
 
     await notificationService.createRideRequestNotification(
@@ -121,7 +130,7 @@ router.patch('/:id/accept', authenticateToken, async (req: AuthenticatedRequest,
       return res.status(403).json({ error: 'Only the driver can accept rides' });
     }
 
-    const updatedRide = await rideService.updateRideStatus(req.params.id, req.user!.uid, 'accepted');
+    const updatedRide = await rideService.acceptRide(req.params.id, req.user!.uid);
     if (!updatedRide) {
       return res.status(404).json({ error: 'Ride not found' });
     }
@@ -140,8 +149,11 @@ router.patch('/:id/accept', authenticateToken, async (req: AuthenticatedRequest,
     );
 
     return res.json(updatedRide);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error accepting ride:', error);
+    if (error.message && error.message.includes('No seats available')) {
+      return res.status(400).json({ error: error.message });
+    }
     return res.status(500).json({ error: 'Failed to accept ride' });
   }
 });
@@ -157,7 +169,7 @@ router.patch('/:id/reject', authenticateToken, async (req: AuthenticatedRequest,
       return res.status(403).json({ error: 'Only the driver can reject rides' });
     }
 
-    const updatedRide = await rideService.updateRideStatus(req.params.id, req.user!.uid, 'rejected');
+    const updatedRide = await rideService.rejectRide(req.params.id, req.user!.uid);
     if (!updatedRide) {
       return res.status(404).json({ error: 'Ride not found' });
     }

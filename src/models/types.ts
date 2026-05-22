@@ -17,9 +17,31 @@ export interface UserProfile {
   carModel?: string;
   carYear?: string;
   plateNumber?: string;
+  passwordHash?: string;
+  homeAddress?: string;
+  homeLat?: number;
+  homeLng?: number;
+  officeAddress?: string;
+  officeLat?: number;
+  officeLng?: number;
+  matchingPreferences?: string;
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface MatchingPreferences {
+  autoAccept: boolean;
+  maxPickupDetourMeters: number;
+  timeFlexibilityMinutes: number;
+  preferredShift: 'morning' | 'evening' | 'any';
+}
+
+export const DEFAULT_MATCHING_PREFERENCES: MatchingPreferences = {
+  autoAccept: false,
+  maxPickupDetourMeters: 2000,
+  timeFlexibilityMinutes: 30,
+  preferredShift: 'any',
+};
 
 export interface Commute {
   id?: string;
@@ -27,9 +49,14 @@ export interface Commute {
   authorName?: string;
   authorPhoto?: string;
   startPoint: string;
+  startLat?: number;
+  startLng?: number;
   destination: string;
+  destLat?: number;
+  destLng?: number;
   departureTime: string;
   seatsAvailable: number;
+  seatsRemaining?: number;
   carMake?: string;
   carModel?: string;
   carYear?: string;
@@ -39,7 +66,8 @@ export interface Commute {
   shift?: 'morning' | 'evening';
   recurring?: boolean;
   daysOfWeek?: string[];
-  requests?: string[];
+  pickupRadiusMeters?: number;
+  timeFlexibilityMinutes?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -61,14 +89,26 @@ export interface Ride {
   carModel?: string;
   carYear?: string;
   plateNumber?: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
+  status: 'auto_suggested' | 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
+  matchScore?: number;
+  detourMeters?: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
+export interface MatchResult {
+  commute: Commute;
+  matchScore: number;
+  pickupDetourMeters: number;
+  dropoffDetourMeters: number;
+  totalDetourMeters: number;
+  timeDeltaMinutes: number;
+  seatsRemaining: number;
+}
+
 export interface Notification {
   id?: string;
-  type: 'ride_request' | 'request_accepted' | 'request_rejected' | 'ride_reminder';
+  type: 'ride_request' | 'request_accepted' | 'request_rejected' | 'ride_reminder' | 'match_suggested' | 'auto_accepted' | 'capacity_update';
   rideId: string;
   commuteId?: string;
   actorUid: string;

@@ -176,6 +176,47 @@ router.patch('/me/phone', authenticateToken, async (req: AuthenticatedRequest, r
   }
 });
 
+// Update home/office addresses
+router.patch('/me/addresses', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { homeAddress, homeLat, homeLng, officeAddress, officeLat, officeLng } = req.body;
+    const user = await userService.updateAddresses(req.user!.uid, {
+      homeAddress, homeLat, homeLng, officeAddress, officeLat, officeLng,
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    return res.json(user);
+  } catch (error) {
+    console.error('Error updating addresses:', error);
+    return res.status(500).json({ error: 'Failed to update addresses' });
+  }
+});
+
+// Get/update matching preferences
+router.get('/me/matching-preferences', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const prefs = await userService.getMatchingPreferences(req.user!.uid);
+    return res.json(prefs);
+  } catch (error) {
+    console.error('Error fetching matching preferences:', error);
+    return res.status(500).json({ error: 'Failed to fetch matching preferences' });
+  }
+});
+
+router.patch('/me/matching-preferences', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = await userService.updateMatchingPreferences(req.user!.uid, req.body);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    return res.json(user);
+  } catch (error) {
+    console.error('Error updating matching preferences:', error);
+    return res.status(500).json({ error: 'Failed to update matching preferences' });
+  }
+});
+
 router.get('/drivers/top-rated', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const drivers = await userService.getVerifiedExecutives(req.user!.uid);

@@ -1,10 +1,16 @@
 import { getDb } from '../config/database.js';
 import { Ride } from '../models/types.js';
 import { userService } from './userService.js';
+import { commuteService } from './commuteService.js';
+import { notificationService } from './notificationService.js';
 import { randomUUID } from 'node:crypto';
 
 function toRide(row: Record<string, unknown>): Ride {
-  return row as unknown as Ride;
+  return {
+    ...row,
+    matchScore: row.matchScore != null ? Number(row.matchScore) : undefined,
+    detourMeters: row.detourMeters != null ? Number(row.detourMeters) : undefined,
+  } as unknown as Ride;
 }
 
 export class RideService {
@@ -48,13 +54,15 @@ export class RideService {
       carYear: data.carYear || null,
       plateNumber: data.plateNumber || null,
       status: 'pending',
+      matchScore: data.matchScore ?? null,
+      detourMeters: data.detourMeters ?? null,
       createdAt: now,
       updatedAt: now,
     };
 
     getDb().prepare(`
-      INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, passengerPhoto, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, createdAt, updatedAt)
-      VALUES (@id, @commuteId, @driverUid, @passengerUid, @passengerName, @passengerPhoto, @startPoint, @destination, @departureTime, @seatsAvailable, @carMake, @carModel, @carYear, @plateNumber, @status, @createdAt, @updatedAt)
+      INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, passengerPhoto, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, matchScore, detourMeters, createdAt, updatedAt)
+      VALUES (@id, @commuteId, @driverUid, @passengerUid, @passengerName, @passengerPhoto, @startPoint, @destination, @departureTime, @seatsAvailable, @carMake, @carModel, @carYear, @plateNumber, @status, @matchScore, @detourMeters, @createdAt, @updatedAt)
     `).run(rideData);
 
     return { ...rideData } as unknown as Ride;
@@ -75,7 +83,9 @@ export class RideService {
       carModel?: string;
       carYear?: string;
       plateNumber?: string;
-    }
+    },
+    matchScore?: number,
+    detourMeters?: number,
   ): Promise<Ride> {
     return this.createRide({
       commuteId,
@@ -92,6 +102,8 @@ export class RideService {
       carYear: commuteData.carYear,
       plateNumber: commuteData.plateNumber,
       status: 'pending',
+      matchScore,
+      detourMeters,
     });
   }
 
@@ -109,6 +121,14 @@ export class RideService {
     }
 
     getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run(status, new Date().toISOString(), rideId);
+
+    // Capacity tracking: decrement on accept, increment on cancel
+    if (status === 'accepted') {
+      await commuteService.decrementSeats(ride.commuteId);
+    } else if (status === 'cancelled') {
+      await commuteService.incrementSeats(ride.commuteId);
+    }
+
     return this.getRide(rideId);
   }
 
@@ -120,7 +140,9 @@ export class RideService {
       throw new Error('Only the driver can accept rides');
     }
 
-    if ((ride.seatsAvailable || 0) <= 0) {
+    // Check capacity
+    const decremented = await commuteService.decrementSeats(ride.commuteId);
+    if (!decremented) {
       throw new Error('No seats available');
     }
 
@@ -160,6 +182,9 @@ export class RideService {
     if (ride.driverUid !== uid && ride.passengerUid !== uid && !isAdmin) {
       throw new Error('Unauthorized to cancel this ride');
     }
+
+    // Increment seats back
+    await commuteService.incrementSeats(ride.commuteId);
 
     getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', new Date().toISOString(), rideId);
     return this.getRide(rideId);

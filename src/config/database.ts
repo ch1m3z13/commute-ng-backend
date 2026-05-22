@@ -21,6 +21,14 @@ export function initializeDatabase(): void {
 
   // Create tables
   db.exec(`
+    CREATE TABLE IF NOT EXISTS geocache (
+      query TEXT PRIMARY KEY,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      raw_json TEXT,
+      createdAt TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       uid TEXT PRIMARY KEY,
       displayName TEXT NOT NULL,
@@ -41,6 +49,13 @@ export function initializeDatabase(): void {
       carYear TEXT,
       plateNumber TEXT,
       passwordHash TEXT,
+      homeAddress TEXT,
+      homeLat REAL,
+      homeLng REAL,
+      officeAddress TEXT,
+      officeLat REAL,
+      officeLng REAL,
+      matchingPreferences TEXT,
       createdAt TEXT,
       updatedAt TEXT
     );
@@ -51,9 +66,14 @@ export function initializeDatabase(): void {
       authorName TEXT,
       authorPhoto TEXT,
       startPoint TEXT NOT NULL,
+      startLat REAL,
+      startLng REAL,
       destination TEXT NOT NULL,
+      destLat REAL,
+      destLng REAL,
       departureTime TEXT NOT NULL,
       seatsAvailable INTEGER NOT NULL,
+      seatsRemaining INTEGER,
       carMake TEXT,
       carModel TEXT,
       carYear TEXT,
@@ -63,6 +83,8 @@ export function initializeDatabase(): void {
       shift TEXT,
       recurring INTEGER DEFAULT 0,
       daysOfWeek TEXT,
+      pickupRadiusMeters INTEGER DEFAULT 2000,
+      timeFlexibilityMinutes INTEGER DEFAULT 30,
       createdAt TEXT,
       updatedAt TEXT
     );
@@ -83,6 +105,8 @@ export function initializeDatabase(): void {
       carYear TEXT,
       plateNumber TEXT,
       status TEXT DEFAULT 'pending',
+      matchScore REAL,
+      detourMeters INTEGER,
       createdAt TEXT,
       updatedAt TEXT
     );

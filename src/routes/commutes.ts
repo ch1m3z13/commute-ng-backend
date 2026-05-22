@@ -2,9 +2,25 @@ import { Router, Response } from 'express';
 import { AuthenticatedRequest, authenticateToken } from '../middleware/auth.js';
 import { commuteService } from '../services/commuteService.js';
 import { userService } from '../services/userService.js';
+import { geocodingService } from '../services/geocodingService.js';
 import { z } from 'zod';
 
 const router = Router();
+
+// Geocoding endpoint — convert address to lat/lng
+router.get('/geocode', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: 'q parameter is required' });
+    }
+    const result = await geocodingService.geocode(q);
+    return res.json({ lat: result.lat, lng: result.lng, displayName: result.displayName });
+  } catch (error: any) {
+    console.error('Geocoding error:', error);
+    return res.status(400).json({ error: error.message || 'Geocoding failed' });
+  }
+});
 
 const createCommuteSchema = z.object({
   startPoint: z.string().min(1).max(200),
@@ -19,6 +35,13 @@ const createCommuteSchema = z.object({
   recurring: z.boolean().optional(),
   daysOfWeek: z.array(z.string()).optional(),
   type: z.enum(['offer', 'request']).default('offer'),
+  // Optional: if client already has coordinates (e.g. from autocomplete)
+  startLat: z.number().optional(),
+  startLng: z.number().optional(),
+  destLat: z.number().optional(),
+  destLng: z.number().optional(),
+  pickupRadiusMeters: z.number().int().min(500).max(5000).optional(),
+  timeFlexibilityMinutes: z.number().int().min(5).max(120).optional(),
 });
 
 router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
@@ -38,16 +61,83 @@ router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Respon
   }
 });
 
+/**
+ * Geospatial matching endpoint.
+ * GET /api/commutes/match?pickupLat=...&pickupLng=...&dropoffLat=...&dropoffLng=...&desiredTime=...&shift=...
+ */
+router.get('/match', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { pickupLat, pickupLng, dropoffLat, dropoffLng, desiredTime, shift } = req.query;
+
+    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng || !desiredTime || !shift) {
+      return res.status(400).json({
+        error: 'pickupLat, pickupLng, dropoffLat, dropoffLng, desiredTime, and shift are required',
+      });
+    }
+
+    const pLat = parseFloat(pickupLat as string);
+    const pLng = parseFloat(pickupLng as string);
+    const dLat = parseFloat(dropoffLat as string);
+    const dLng = parseFloat(dropoffLng as string);
+
+    if (isNaN(pLat) || isNaN(pLng) || isNaN(dLat) || isNaN(dLng)) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+
+    if (shift !== 'morning' && shift !== 'evening') {
+      return res.status(400).json({ error: 'shift must be morning or evening' });
+    }
+
+    const matches = await commuteService.searchCommutes({
+      pickupLat: pLat,
+      pickupLng: pLng,
+      dropoffLat: dLat,
+      dropoffLng: dLng,
+      desiredTime: desiredTime as string,
+      shift: shift as 'morning' | 'evening',
+    });
+
+    return res.json({ matches });
+  } catch (error) {
+    console.error('Error matching commutes:', error);
+    return res.status(500).json({ error: 'Failed to search commutes' });
+  }
+});
+
+/**
+ * Legacy search endpoint (kept for backward compat, now uses geocoding).
+ */
 router.get('/search', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, desiredTime, shift } = req.query;
 
     if (!from || !to) {
       return res.status(400).json({ error: 'from and to query parameters are required' });
     }
 
-    const commutes = await commuteService.searchCommutes(from as string, to as string);
-    return res.json(commutes);
+    // Geocode the from/to addresses
+    let pLat: number, pLng: number, dLat: number, dLng: number;
+    try {
+      const fromGeo = await geocodingService.geocode(from as string);
+      pLat = fromGeo.lat;
+      pLng = fromGeo.lng;
+      const toGeo = await geocodingService.geocode(to as string);
+      dLat = toGeo.lat;
+      dLng = toGeo.lng;
+    } catch (geoErr: any) {
+      return res.status(400).json({ error: geoErr.message || 'Failed to geocode addresses' });
+    }
+
+    const matches = await commuteService.searchCommutes({
+      pickupLat: pLat,
+      pickupLng: pLng,
+      dropoffLat: dLat,
+      dropoffLng: dLng,
+      desiredTime: (desiredTime as string) || '08:00',
+      shift: (shift as 'morning' | 'evening') || 'morning',
+    });
+
+    return res.json({ matches });
   } catch (error) {
     console.error('Error searching commutes:', error);
     return res.status(500).json({ error: 'Failed to search commutes' });
@@ -94,8 +184,11 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 
     const commute = await commuteService.createCommute(req.user!.uid, parsed.data);
     return res.status(201).json(commute);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating commute:', error);
+    if (error.message && error.message.includes('Address not found')) {
+      return res.status(400).json({ error: error.message });
+    }
     return res.status(500).json({ error: 'Failed to create commute' });
   }
 });

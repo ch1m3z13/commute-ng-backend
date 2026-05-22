@@ -1,6 +1,9 @@
 import { getDb } from '../config/database.js';
-import { Commute } from '../models/types.js';
+import { Commute, DEFAULT_MATCHING_PREFERENCES, MatchingPreferences } from '../models/types.js';
 import { userService } from './userService.js';
+import { geocodingService } from './geocodingService.js';
+import { matchingService } from './matchingService.js';
+import { notificationService } from './notificationService.js';
 import { randomUUID } from 'node:crypto';
 
 function toCommute(row: Record<string, unknown>): Commute {
@@ -8,6 +11,13 @@ function toCommute(row: Record<string, unknown>): Commute {
     ...row,
     recurring: Boolean(row.recurring),
     daysOfWeek: row.daysOfWeek ? JSON.parse(row.daysOfWeek as string) : undefined,
+    startLat: row.startLat != null ? Number(row.startLat) : undefined,
+    startLng: row.startLng != null ? Number(row.startLng) : undefined,
+    destLat: row.destLat != null ? Number(row.destLat) : undefined,
+    destLng: row.destLng != null ? Number(row.destLng) : undefined,
+    seatsRemaining: row.seatsRemaining != null ? Number(row.seatsRemaining) : undefined,
+    pickupRadiusMeters: row.pickupRadiusMeters != null ? Number(row.pickupRadiusMeters) : 2000,
+    timeFlexibilityMinutes: row.timeFlexibilityMinutes != null ? Number(row.timeFlexibilityMinutes) : 30,
   } as unknown as Commute;
 }
 
@@ -65,32 +75,166 @@ export class CommuteService {
   async createCommute(authorUid: string, data: Omit<Commute, 'id' | 'authorUid' | 'createdAt'>): Promise<Commute> {
     const id = randomUUID();
     const now = new Date().toISOString();
+
+    // Geocode start and destination
+    let startLat: number | undefined, startLng: number | undefined;
+    let destLat: number | undefined, destLng: number | undefined;
+
+    if (data.startLat !== undefined && data.startLng !== undefined) {
+      startLat = data.startLat;
+      startLng = data.startLng;
+    } else {
+      const startGeo = await geocodingService.geocode(data.startPoint);
+      startLat = startGeo.lat;
+      startLng = startGeo.lng;
+    }
+
+    if (data.destLat !== undefined && data.destLng !== undefined) {
+      destLat = data.destLat;
+      destLng = data.destLng;
+    } else {
+      const destGeo = await geocodingService.geocode(data.destination);
+      destLat = destGeo.lat;
+      destLng = destGeo.lng;
+    }
+
+    const seatsAvailable = data.seatsAvailable;
+
     const commuteData = {
       id,
       authorUid,
       startPoint: data.startPoint,
+      startLat,
+      startLng,
       destination: data.destination,
+      destLat,
+      destLng,
       departureTime: data.departureTime,
-      seatsAvailable: data.seatsAvailable,
-      carMake: data.carMake || null,
-      carModel: data.carModel || null,
-      carYear: data.carYear || null,
-      plateNumber: data.plateNumber || null,
+      seatsAvailable,
+      seatsRemaining: seatsAvailable,
+      carMake: data.carMake || undefined,
+      carModel: data.carModel || undefined,
+      carYear: data.carYear || undefined,
+      plateNumber: data.plateNumber || undefined,
       type: data.type || 'offer',
       status: data.status || 'active',
-      shift: data.shift || null,
+      shift: data.shift || undefined,
       recurring: data.recurring ? 1 : 0,
       daysOfWeek: data.daysOfWeek ? JSON.stringify(data.daysOfWeek) : null,
+      pickupRadiusMeters: data.pickupRadiusMeters ?? 2000,
+      timeFlexibilityMinutes: data.timeFlexibilityMinutes ?? 30,
       createdAt: now,
       updatedAt: now,
     };
 
     getDb().prepare(`
-      INSERT INTO commutes (id, authorUid, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, type, status, shift, recurring, daysOfWeek, createdAt, updatedAt)
-      VALUES (@id, @authorUid, @startPoint, @destination, @departureTime, @seatsAvailable, @carMake, @carModel, @carYear, @plateNumber, @type, @status, @shift, @recurring, @daysOfWeek, @createdAt, @updatedAt)
+      INSERT INTO commutes (id, authorUid, startPoint, startLat, startLng, destination, destLat, destLng, departureTime, seatsAvailable, seatsRemaining, carMake, carModel, carYear, plateNumber, type, status, shift, recurring, daysOfWeek, pickupRadiusMeters, timeFlexibilityMinutes, createdAt, updatedAt)
+      VALUES (@id, @authorUid, @startPoint, @startLat, @startLng, @destination, @destLat, @destLng, @departureTime, @seatsAvailable, @seatsRemaining, @carMake, @carModel, @carYear, @plateNumber, @type, @status, @shift, @recurring, @daysOfWeek, @pickupRadiusMeters, @timeFlexibilityMinutes, @createdAt, @updatedAt)
     `).run(commuteData);
 
-    return { ...commuteData, id, recurring: Boolean(commuteData.recurring), daysOfWeek: data.daysOfWeek } as unknown as Commute;
+    const commute: Commute = {
+      ...commuteData,
+      id,
+      recurring: Boolean(commuteData.recurring),
+      daysOfWeek: data.daysOfWeek,
+      startLat,
+      startLng,
+      destLat,
+      destLng,
+      seatsRemaining: seatsAvailable,
+      pickupRadiusMeters: commuteData.pickupRadiusMeters,
+      timeFlexibilityMinutes: commuteData.timeFlexibilityMinutes,
+    };
+
+    // Auto-match: if this is an offer, find matching rider requests
+    if (commute.type === 'offer') {
+      const matches = await matchingService.findRiderMatches(commute);
+      for (const match of matches.slice(0, 5)) { // top 5 matches
+        const rider = match.commute;
+        // Create auto_suggested ride
+        const rideId = randomUUID();
+        getDb().prepare(`
+          INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, matchScore, detourMeters, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto_suggested', ?, ?, ?, ?)
+        `).run(
+          rideId,
+          commute.id,
+          authorUid,
+          rider.authorUid,
+          null, // passengerName filled later
+          rider.startPoint,
+          rider.destination,
+          commute.departureTime,
+          commute.seatsAvailable,
+          commute.carMake,
+          commute.carModel,
+          commute.carYear,
+          commute.plateNumber,
+          match.matchScore,
+          match.totalDetourMeters,
+          now,
+          now
+        );
+
+        // Notify driver
+        await notificationService.createNotification(authorUid, {
+          type: 'match_suggested',
+          rideId,
+          commuteId: commute.id,
+          actorUid: rider.authorUid,
+          actorName: 'A rider',
+          startPoint: rider.startPoint,
+          destination: rider.destination,
+          departureTime: commute.departureTime,
+        });
+      }
+    }
+
+    // Auto-match: if this is a request, find matching driver offers
+    if (commute.type === 'request') {
+      const matches = await matchingService.findDriverMatches(commute);
+      const user = await userService.getUser(authorUid);
+      for (const match of matches.slice(0, 5)) {
+        const driver = match.commute;
+        const rideId = randomUUID();
+        getDb().prepare(`
+          INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, matchScore, detourMeters, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto_suggested', ?, ?, ?, ?)
+        `).run(
+          rideId,
+          driver.id,
+          driver.authorUid,
+          authorUid,
+          user?.displayName || null,
+          commute.startPoint,
+          commute.destination,
+          driver.departureTime,
+          driver.seatsAvailable,
+          driver.carMake,
+          driver.carModel,
+          driver.carYear,
+          driver.plateNumber,
+          match.matchScore,
+          match.totalDetourMeters,
+          now,
+          now
+        );
+
+        // Notify rider
+        await notificationService.createNotification(authorUid, {
+          type: 'match_suggested',
+          rideId,
+          commuteId: commute.id,
+          actorUid: driver.authorUid,
+          actorName: 'A driver',
+          startPoint: commute.startPoint,
+          destination: commute.destination,
+          departureTime: driver.departureTime,
+        });
+      }
+    }
+
+    return commute;
   }
 
   async updateCommute(commuteId: string, uid: string, data: Partial<Commute>): Promise<Commute | null> {
@@ -132,22 +276,41 @@ export class CommuteService {
     return true;
   }
 
-  async searchCommutes(startPoint: string, destination: string): Promise<Commute[]> {
-    const rows = getDb().prepare(
-      "SELECT * FROM commutes WHERE type = 'offer' AND status = 'active' ORDER BY createdAt DESC"
-    ).all() as Record<string, unknown>[];
+  /**
+   * Geospatial search — replaces the old searchCommutes.
+   */
+  async searchCommutes(params: {
+    pickupLat: number;
+    pickupLng: number;
+    dropoffLat: number;
+    dropoffLng: number;
+    desiredTime: string;
+    shift: 'morning' | 'evening';
+    maxResults?: number;
+  }) {
+    return matchingService.findMatches(params);
+  }
 
-    const commutes = rows.map(toCommute);
+  /**
+   * Decrement seats remaining when a ride is accepted.
+   */
+  async decrementSeats(commuteId: string): Promise<boolean> {
+    const commute = await this.getCommute(commuteId);
+    if (!commute) return false;
+    const current = commute.seatsRemaining ?? commute.seatsAvailable;
+    if (current <= 0) return false;
 
-    return commutes.filter((c) => {
-      const startMatch = startPoint
-        ? c.startPoint.toLowerCase().includes(startPoint.toLowerCase())
-        : true;
-      const destMatch = destination
-        ? c.destination.toLowerCase().includes(destination.toLowerCase())
-        : true;
-      return startMatch && destMatch;
-    });
+    getDb().prepare('UPDATE commutes SET seatsRemaining = seatsRemaining - 1, updatedAt = ? WHERE id = ?')
+      .run(new Date().toISOString(), commuteId);
+    return true;
+  }
+
+  /**
+   * Increment seats remaining when a ride is cancelled.
+   */
+  async incrementSeats(commuteId: string): Promise<void> {
+    getDb().prepare('UPDATE commutes SET seatsRemaining = seatsRemaining + 1, updatedAt = ? WHERE id = ?')
+      .run(new Date().toISOString(), commuteId);
   }
 }
 

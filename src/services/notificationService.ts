@@ -1,6 +1,7 @@
 import { getDb } from '../config/database.js';
 import { Notification } from '../models/types.js';
 import { randomUUID } from 'node:crypto';
+import { Response } from 'express';
 
 function toNotification(row: Record<string, unknown>): Notification {
   return {
@@ -9,7 +10,38 @@ function toNotification(row: Record<string, unknown>): Notification {
   } as unknown as Notification;
 }
 
+type SSEConnection = {
+  res: Response;
+  uid: string;
+};
+
 export class NotificationService {
+  private connections: Map<string, Set<Response>> = new Map();
+
+  addConnection(uid: string, res: Response): void {
+    if (!this.connections.has(uid)) {
+      this.connections.set(uid, new Set());
+    }
+    this.connections.get(uid)!.add(res);
+
+    // Remove on close
+    res.on('close', () => {
+      this.connections.get(uid)?.delete(res);
+      if (this.connections.get(uid)?.size === 0) {
+        this.connections.delete(uid);
+      }
+    });
+  }
+
+  private pushToUser(uid: string, notification: Notification): void {
+    const conns = this.connections.get(uid);
+    if (!conns) return;
+    const data = JSON.stringify(notification);
+    for (const res of conns) {
+      res.write(`data: ${data}\n\n`);
+    }
+  }
+
   async getNotifications(userId: string): Promise<Notification[]> {
     const rows = getDb().prepare('SELECT * FROM notifications WHERE recipientUid = ? ORDER BY createdAt DESC').all(userId) as Record<string, unknown>[];
     return rows.map(toNotification);
@@ -47,7 +79,12 @@ export class NotificationService {
       VALUES (@id, @recipientUid, @type, @rideId, @commuteId, @actorUid, @actorName, @actorPhoto, @startPoint, @destination, @departureTime, @read, @createdAt)
     `).run(notifData);
 
-    return { ...notifData, read: false } as unknown as Notification;
+    const notification: Notification = { ...notifData, read: false } as unknown as Notification;
+
+    // Push to SSE connections
+    this.pushToUser(recipientUid, notification);
+
+    return notification;
   }
 
   async markAsRead(userId: string, notificationId: string): Promise<void> {

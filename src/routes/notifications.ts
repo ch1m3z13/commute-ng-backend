@@ -4,6 +4,32 @@ import { notificationService } from '../services/notificationService.js';
 
 const router = Router();
 
+router.get('/stream', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  // SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no', // disable nginx buffering
+  });
+
+  // Send initial comment to establish connection
+  res.write(': connected\n\n');
+
+  // Register connection
+  notificationService.addConnection(req.user!.uid, res);
+
+  // Send heartbeat every 30s to keep connection alive
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 30000);
+
+  // Cleanup on disconnect
+  req.on('close', () => {
+    clearInterval(heartbeat);
+  });
+});
+
 router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const notifications = await notificationService.getNotifications(req.user!.uid);

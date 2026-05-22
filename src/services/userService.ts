@@ -1,11 +1,15 @@
 import { getDb } from '../config/database.js';
-import { UserProfile } from '../models/types.js';
+import { UserProfile, MatchingPreferences, DEFAULT_MATCHING_PREFERENCES } from '../models/types.js';
 import { randomUUID } from 'node:crypto';
 
 function toUserProfile(row: Record<string, unknown>): UserProfile {
   return {
     ...row,
     isVerified: Boolean(row.isVerified),
+    homeLat: row.homeLat != null ? Number(row.homeLat) : undefined,
+    homeLng: row.homeLng != null ? Number(row.homeLng) : undefined,
+    officeLat: row.officeLat != null ? Number(row.officeLat) : undefined,
+    officeLng: row.officeLng != null ? Number(row.officeLng) : undefined,
   } as unknown as UserProfile;
 }
 
@@ -44,13 +48,20 @@ export class UserService {
       carYear: data.carYear || null,
       plateNumber: data.plateNumber || null,
       passwordHash: data.passwordHash || null,
+      homeAddress: data.homeAddress || null,
+      homeLat: data.homeLat ?? null,
+      homeLng: data.homeLng ?? null,
+      officeAddress: data.officeAddress || null,
+      officeLat: data.officeLat ?? null,
+      officeLng: data.officeLng ?? null,
+      matchingPreferences: data.matchingPreferences || JSON.stringify(DEFAULT_MATCHING_PREFERENCES),
       createdAt: now,
       updatedAt: now,
     };
 
     getDb().prepare(`
-      INSERT INTO users (uid, displayName, email, mobileNumber, nin, company, isVerified, rating, role, photoURL, verificationStatus, employmentLetterUrl, idCardUrl, payStubUrl, carMake, carModel, carYear, plateNumber, passwordHash, createdAt, updatedAt)
-      VALUES (@uid, @displayName, @email, @mobileNumber, @nin, @company, @isVerified, @rating, @role, @photoURL, @verificationStatus, @employmentLetterUrl, @idCardUrl, @payStubUrl, @carMake, @carModel, @carYear, @plateNumber, @passwordHash, @createdAt, @updatedAt)
+      INSERT INTO users (uid, displayName, email, mobileNumber, nin, company, isVerified, rating, role, photoURL, verificationStatus, employmentLetterUrl, idCardUrl, payStubUrl, carMake, carModel, carYear, plateNumber, passwordHash, homeAddress, homeLat, homeLng, officeAddress, officeLat, officeLng, matchingPreferences, createdAt, updatedAt)
+      VALUES (@uid, @displayName, @email, @mobileNumber, @nin, @company, @isVerified, @rating, @role, @photoURL, @verificationStatus, @employmentLetterUrl, @idCardUrl, @payStubUrl, @carMake, @carModel, @carYear, @plateNumber, @passwordHash, @homeAddress, @homeLat, @homeLng, @officeAddress, @officeLat, @officeLng, @matchingPreferences, @createdAt, @updatedAt)
     `).run(userData);
 
     return userData as unknown as UserProfile;
@@ -127,6 +138,63 @@ export class UserService {
     sets.push('updatedAt = @updatedAt');
     getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
     return this.getUser(userId);
+  }
+
+  async updateAddresses(
+    userId: string,
+    addresses: {
+      homeAddress?: string;
+      homeLat?: number;
+      homeLng?: number;
+      officeAddress?: string;
+      officeLat?: number;
+      officeLng?: number;
+    }
+  ): Promise<UserProfile | null> {
+    const sets: string[] = [];
+    const values: Record<string, unknown> = { uid: userId, updatedAt: new Date().toISOString() };
+
+    for (const [key, value] of Object.entries(addresses)) {
+      if (value !== undefined) {
+        sets.push(`${key} = @${key}`);
+        values[key] = value;
+      }
+    }
+
+    if (sets.length === 0) return this.getUser(userId);
+
+    sets.push('updatedAt = @updatedAt');
+    getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
+    return this.getUser(userId);
+  }
+
+  async updateMatchingPreferences(
+    userId: string,
+    prefs: Partial<MatchingPreferences>
+  ): Promise<UserProfile | null> {
+    const user = await this.getUser(userId);
+    if (!user) return null;
+
+    const current: MatchingPreferences = user.matchingPreferences
+      ? JSON.parse(user.matchingPreferences)
+      : DEFAULT_MATCHING_PREFERENCES;
+
+    const updated = { ...current, ...prefs };
+
+    getDb().prepare('UPDATE users SET matchingPreferences = ?, updatedAt = ? WHERE uid = ?')
+      .run(JSON.stringify(updated), new Date().toISOString(), userId);
+
+    return this.getUser(userId);
+  }
+
+  async getMatchingPreferences(userId: string): Promise<MatchingPreferences> {
+    const user = await this.getUser(userId);
+    if (!user || !user.matchingPreferences) return DEFAULT_MATCHING_PREFERENCES;
+    try {
+      return JSON.parse(user.matchingPreferences) as MatchingPreferences;
+    } catch {
+      return DEFAULT_MATCHING_PREFERENCES;
+    }
   }
 
   async getVerifiedExecutives(excludeUid?: string): Promise<UserProfile[]> {
