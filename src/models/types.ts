@@ -1,3 +1,16 @@
+export type VerificationTier = 'basic' | 'standard' | 'full';
+
+export interface VerificationStatus {
+  tier: VerificationTier;
+  phoneVerified: boolean;
+  ninVerified: boolean;
+  idCardVerified: boolean;
+  idCardStatus: 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  isVerified: boolean; // alias for idCardVerified — preserved for backward compat
+  verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;
@@ -13,10 +26,16 @@ export interface UserProfile {
   employmentLetterUrl?: string;
   idCardUrl?: string;
   payStubUrl?: string;
+  phoneVerified?: boolean | number;
+  ninVerified?: boolean | number;
+  idCardVerified?: boolean | number;
+  rejectionReason?: string;
   carMake?: string;
   carModel?: string;
   carYear?: string;
   plateNumber?: string;
+  provider?: 'google' | 'linkedin' | 'tiktok';
+  providerId?: string;
   passwordHash?: string;
   homeAddress?: string;
   homeLat?: number;

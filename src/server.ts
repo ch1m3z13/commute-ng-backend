@@ -14,11 +14,19 @@ import {
   notificationsRouter,
   chatRouter,
   verificationRouter,
+  authRouter,
 } from './routes/index.js';
 
-initializeDatabase();
-
 const app = express();
+
+initializeDatabase().then(() => {
+  app.listen(config.port, () => {
+    console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
+  });
+}).catch((error) => {
+  console.error('Failed to initialize database:', error);
+  process.exit(1);
+});
 
 app.use(helmet());
 app.use(cors());
@@ -28,6 +36,8 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use('/api/auth', authRouter);
 
 app.use('/api/users', usersRouter);
 app.use('/api/commutes', commutesRouter);
@@ -39,8 +49,5 @@ app.use('/api/verification', verificationRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-app.listen(config.port, () => {
-  console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
-});
 
 export default app;

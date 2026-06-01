@@ -15,13 +15,19 @@ function toUserProfile(row: Record<string, unknown>): UserProfile {
 
 export class UserService {
   async getUser(userId: string): Promise<UserProfile | null> {
-    const row = getDb().prepare('SELECT * FROM users WHERE uid = ?').get(userId) as Record<string, unknown> | undefined;
+    const row = await getDb().prepare('SELECT * FROM users WHERE uid = ?').get(userId) as Record<string, unknown> | undefined;
     if (!row) return null;
     return toUserProfile(row);
   }
 
   async getUserByEmail(email: string): Promise<UserProfile | null> {
-    const row = getDb().prepare('SELECT * FROM users WHERE email = ?').get(email) as Record<string, unknown> | undefined;
+    const row = await getDb().prepare('SELECT * FROM users WHERE email = ?').get(email) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return toUserProfile(row);
+  }
+
+  async getUserByProvider(provider: string, providerId: string): Promise<UserProfile | null> {
+    const row = await getDb().prepare('SELECT * FROM users WHERE provider = ? AND providerId = ?').get(provider, providerId) as Record<string, unknown> | undefined;
     if (!row) return null;
     return toUserProfile(row);
   }
@@ -47,6 +53,8 @@ export class UserService {
       carModel: data.carModel || null,
       carYear: data.carYear || null,
       plateNumber: data.plateNumber || null,
+      provider: data.provider || null,
+      providerId: data.providerId || null,
       passwordHash: data.passwordHash || null,
       homeAddress: data.homeAddress || null,
       homeLat: data.homeLat ?? null,
@@ -59,7 +67,7 @@ export class UserService {
       updatedAt: now,
     };
 
-    getDb().prepare(`
+    await getDb().prepare(`
       INSERT INTO users (uid, displayName, email, mobileNumber, nin, company, isVerified, rating, role, photoURL, verificationStatus, employmentLetterUrl, idCardUrl, payStubUrl, carMake, carModel, carYear, plateNumber, passwordHash, homeAddress, homeLat, homeLng, officeAddress, officeLat, officeLng, matchingPreferences, createdAt, updatedAt)
       VALUES (@uid, @displayName, @email, @mobileNumber, @nin, @company, @isVerified, @rating, @role, @photoURL, @verificationStatus, @employmentLetterUrl, @idCardUrl, @payStubUrl, @carMake, @carModel, @carYear, @plateNumber, @passwordHash, @homeAddress, @homeLat, @homeLng, @officeAddress, @officeLat, @officeLng, @matchingPreferences, @createdAt, @updatedAt)
     `).run(userData);
@@ -83,7 +91,7 @@ export class UserService {
     sets.push('updatedAt = @updatedAt');
     values.updatedAt = new Date().toISOString();
 
-    getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
+    await getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
     return this.getUser(userId);
   }
 
@@ -115,7 +123,7 @@ export class UserService {
       sets.push('isVerified = 1');
     }
 
-    getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
+    await getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
     return this.getUser(userId);
   }
 
@@ -136,7 +144,7 @@ export class UserService {
     if (sets.length === 0) return this.getUser(userId);
 
     sets.push('updatedAt = @updatedAt');
-    getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
+    await getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
     return this.getUser(userId);
   }
 
@@ -164,7 +172,7 @@ export class UserService {
     if (sets.length === 0) return this.getUser(userId);
 
     sets.push('updatedAt = @updatedAt');
-    getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
+    await getDb().prepare(`UPDATE users SET ${sets.join(', ')} WHERE uid = @uid`).run(values);
     return this.getUser(userId);
   }
 
@@ -181,7 +189,7 @@ export class UserService {
 
     const updated = { ...current, ...prefs };
 
-    getDb().prepare('UPDATE users SET matchingPreferences = ?, updatedAt = ? WHERE uid = ?')
+    await getDb().prepare('UPDATE users SET matchingPreferences = ?, updatedAt = ? WHERE uid = ?')
       .run(JSON.stringify(updated), new Date().toISOString(), userId);
 
     return this.getUser(userId);
@@ -208,7 +216,7 @@ export class UserService {
 
     query += ' ORDER BY rating DESC';
 
-    const rows = getDb().prepare(query).all(params) as Record<string, unknown>[];
+    const rows = await getDb().prepare(query).all(params) as Record<string, unknown>[];
     return rows.map(toUserProfile);
   }
 
@@ -218,6 +226,26 @@ export class UserService {
     if (user.role === 'admin') return true;
     if (user.email === 'ChimeO81@gmail.com' && user.verificationStatus === 'verified') return true;
     return false;
+  }
+
+  async setPhoneVerified(userId: string, verified: boolean): Promise<void> {
+    await getDb().prepare('UPDATE users SET phoneVerified = @v, updatedAt = @now WHERE uid = @uid')
+      .run({ v: verified ? 1 : 0, now: new Date().toISOString(), uid: userId });
+  }
+
+  async setNinVerified(userId: string, verified: boolean): Promise<void> {
+    await getDb().prepare('UPDATE users SET ninVerified = @v, updatedAt = @now WHERE uid = @uid')
+      .run({ v: verified ? 1 : 0, now: new Date().toISOString(), uid: userId });
+  }
+
+  async setIdCardVerified(userId: string, verified: boolean): Promise<void> {
+    await getDb().prepare('UPDATE users SET idCardVerified = @v, updatedAt = @now WHERE uid = @uid')
+      .run({ v: verified ? 1 : 0, now: new Date().toISOString(), uid: userId });
+  }
+
+  async setRejectionReason(userId: string, reason: string | null): Promise<void> {
+    await getDb().prepare('UPDATE users SET rejectionReason = @reason, updatedAt = @now WHERE uid = @uid')
+      .run({ reason: reason ?? null, now: new Date().toISOString(), uid: userId });
   }
 }
 

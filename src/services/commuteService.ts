@@ -23,7 +23,7 @@ function toCommute(row: Record<string, unknown>): Commute {
 
 export class CommuteService {
   async getCommute(commuteId: string): Promise<Commute | null> {
-    const row = getDb().prepare('SELECT * FROM commutes WHERE id = ?').get(commuteId) as Record<string, unknown> | undefined;
+    const row = await getDb().prepare('SELECT * FROM commutes WHERE id = ?').get(commuteId) as Record<string, unknown> | undefined;
     if (!row) return null;
     return toCommute(row);
   }
@@ -57,7 +57,7 @@ export class CommuteService {
     }
     query += ' ORDER BY createdAt DESC';
 
-    const rows = getDb().prepare(query).all(params) as Record<string, unknown>[];
+    const rows = await getDb().prepare(query).all(params) as Record<string, unknown>[];
     let commutes = rows.map(toCommute);
 
     if (filters.startPoint) {
@@ -127,7 +127,7 @@ export class CommuteService {
       updatedAt: now,
     };
 
-    getDb().prepare(`
+    await getDb().prepare(`
       INSERT INTO commutes (id, authorUid, startPoint, startLat, startLng, destination, destLat, destLng, departureTime, seatsAvailable, seatsRemaining, carMake, carModel, carYear, plateNumber, type, status, shift, recurring, daysOfWeek, pickupRadiusMeters, timeFlexibilityMinutes, createdAt, updatedAt)
       VALUES (@id, @authorUid, @startPoint, @startLat, @startLng, @destination, @destLat, @destLng, @departureTime, @seatsAvailable, @seatsRemaining, @carMake, @carModel, @carYear, @plateNumber, @type, @status, @shift, @recurring, @daysOfWeek, @pickupRadiusMeters, @timeFlexibilityMinutes, @createdAt, @updatedAt)
     `).run(commuteData);
@@ -153,7 +153,7 @@ export class CommuteService {
         const rider = match.commute;
         // Create auto_suggested ride
         const rideId = randomUUID();
-        getDb().prepare(`
+        await getDb().prepare(`
           INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, matchScore, detourMeters, createdAt, updatedAt)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto_suggested', ?, ?, ?, ?)
         `).run(
@@ -197,7 +197,7 @@ export class CommuteService {
       for (const match of matches.slice(0, 5)) {
         const driver = match.commute;
         const rideId = randomUUID();
-        getDb().prepare(`
+        await getDb().prepare(`
           INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, matchScore, detourMeters, createdAt, updatedAt)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto_suggested', ?, ?, ?, ?)
         `).run(
@@ -259,7 +259,7 @@ export class CommuteService {
     if (sets.length === 0) return commute;
 
     sets.push('updatedAt = @updatedAt');
-    getDb().prepare(`UPDATE commutes SET ${sets.join(', ')} WHERE id = @id`).run(values);
+    await getDb().prepare(`UPDATE commutes SET ${sets.join(', ')} WHERE id = @id`).run(values);
     return this.getCommute(commuteId);
   }
 
@@ -272,7 +272,7 @@ export class CommuteService {
       throw new Error('Unauthorized: You can only delete your own commutes');
     }
 
-    getDb().prepare('DELETE FROM commutes WHERE id = ?').run(commuteId);
+    await getDb().prepare('DELETE FROM commutes WHERE id = ?').run(commuteId);
     return true;
   }
 
@@ -300,7 +300,7 @@ export class CommuteService {
     const current = commute.seatsRemaining ?? commute.seatsAvailable;
     if (current <= 0) return false;
 
-    getDb().prepare('UPDATE commutes SET seatsRemaining = seatsRemaining - 1, updatedAt = ? WHERE id = ?')
+    await getDb().prepare('UPDATE commutes SET seatsRemaining = seatsRemaining - 1, updatedAt = ? WHERE id = ?')
       .run(new Date().toISOString(), commuteId);
     return true;
   }
@@ -309,7 +309,7 @@ export class CommuteService {
    * Increment seats remaining when a ride is cancelled.
    */
   async incrementSeats(commuteId: string): Promise<void> {
-    getDb().prepare('UPDATE commutes SET seatsRemaining = seatsRemaining + 1, updatedAt = ? WHERE id = ?')
+    await getDb().prepare('UPDATE commutes SET seatsRemaining = seatsRemaining + 1, updatedAt = ? WHERE id = ?')
       .run(new Date().toISOString(), commuteId);
   }
 }

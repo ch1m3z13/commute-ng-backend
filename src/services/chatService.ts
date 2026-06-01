@@ -8,7 +8,7 @@ function toMessage(row: Record<string, unknown>): ChatMessage {
 
 export class ChatService {
   async getMessages(rideId: string): Promise<ChatMessage[]> {
-    const rows = getDb().prepare('SELECT * FROM chat_messages WHERE rideId = ? ORDER BY createdAt ASC').all(rideId) as Record<string, unknown>[];
+    const rows = await getDb().prepare('SELECT * FROM chat_messages WHERE rideId = ? ORDER BY createdAt ASC').all(rideId) as Record<string, unknown>[];
     return rows.map(toMessage);
   }
 
@@ -31,7 +31,7 @@ export class ChatService {
       createdAt: now,
     };
 
-    getDb().prepare(`
+    await getDb().prepare(`
       INSERT INTO chat_messages (id, rideId, senderUid, senderName, senderPhoto, text, createdAt)
       VALUES (@id, @rideId, @senderUid, @senderName, @senderPhoto, @text, @createdAt)
     `).run(messageData);
@@ -40,7 +40,7 @@ export class ChatService {
   }
 
   async canAccessChat(rideId: string, uid: string): Promise<boolean> {
-    const ride = getDb().prepare('SELECT driverUid, passengerUid FROM rides WHERE id = ?').get(rideId) as { driverUid: string; passengerUid: string } | undefined;
+    const ride = await getDb().prepare('SELECT driverUid, passengerUid FROM rides WHERE id = ?').get(rideId) as { driverUid: string; passengerUid: string } | undefined;
     if (!ride) return false;
     return ride.driverUid === uid || ride.passengerUid === uid;
   }

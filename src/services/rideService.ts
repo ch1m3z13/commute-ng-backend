@@ -15,23 +15,23 @@ function toRide(row: Record<string, unknown>): Ride {
 
 export class RideService {
   async getRide(rideId: string): Promise<Ride | null> {
-    const row = getDb().prepare('SELECT * FROM rides WHERE id = ?').get(rideId) as Record<string, unknown> | undefined;
+    const row = await getDb().prepare('SELECT * FROM rides WHERE id = ?').get(rideId) as Record<string, unknown> | undefined;
     if (!row) return null;
     return toRide(row);
   }
 
   async getRidesForPassenger(passengerUid: string): Promise<Ride[]> {
-    const rows = getDb().prepare('SELECT * FROM rides WHERE passengerUid = ? ORDER BY createdAt DESC').all(passengerUid) as Record<string, unknown>[];
+    const rows = await getDb().prepare('SELECT * FROM rides WHERE passengerUid = ? ORDER BY createdAt DESC').all(passengerUid) as Record<string, unknown>[];
     return rows.map(toRide);
   }
 
   async getRidesForDriver(driverUid: string): Promise<Ride[]> {
-    const rows = getDb().prepare('SELECT * FROM rides WHERE driverUid = ? ORDER BY createdAt DESC').all(driverUid) as Record<string, unknown>[];
+    const rows = await getDb().prepare('SELECT * FROM rides WHERE driverUid = ? ORDER BY createdAt DESC').all(driverUid) as Record<string, unknown>[];
     return rows.map(toRide);
   }
 
   async getRidesForCommute(commuteId: string): Promise<Ride[]> {
-    const rows = getDb().prepare('SELECT * FROM rides WHERE commuteId = ? ORDER BY createdAt DESC').all(commuteId) as Record<string, unknown>[];
+    const rows = await getDb().prepare('SELECT * FROM rides WHERE commuteId = ? ORDER BY createdAt DESC').all(commuteId) as Record<string, unknown>[];
     return rows.map(toRide);
   }
 
@@ -60,7 +60,7 @@ export class RideService {
       updatedAt: now,
     };
 
-    getDb().prepare(`
+    await getDb().prepare(`
       INSERT INTO rides (id, commuteId, driverUid, passengerUid, passengerName, passengerPhoto, startPoint, destination, departureTime, seatsAvailable, carMake, carModel, carYear, plateNumber, status, matchScore, detourMeters, createdAt, updatedAt)
       VALUES (@id, @commuteId, @driverUid, @passengerUid, @passengerName, @passengerPhoto, @startPoint, @destination, @departureTime, @seatsAvailable, @carMake, @carModel, @carYear, @plateNumber, @status, @matchScore, @detourMeters, @createdAt, @updatedAt)
     `).run(rideData);
@@ -120,7 +120,7 @@ export class RideService {
       throw new Error('Unauthorized to update this ride');
     }
 
-    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run(status, new Date().toISOString(), rideId);
+    await getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run(status, new Date().toISOString(), rideId);
 
     // Capacity tracking: decrement on accept, increment on cancel
     if (status === 'accepted') {
@@ -146,7 +146,7 @@ export class RideService {
       throw new Error('No seats available');
     }
 
-    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('accepted', new Date().toISOString(), rideId);
+    await getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('accepted', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -158,7 +158,7 @@ export class RideService {
       throw new Error('Only the driver can reject rides');
     }
 
-    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('rejected', new Date().toISOString(), rideId);
+    await getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('rejected', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -170,7 +170,7 @@ export class RideService {
       throw new Error('Only participants can mark ride as complete');
     }
 
-    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('completed', new Date().toISOString(), rideId);
+    await getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('completed', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -186,7 +186,7 @@ export class RideService {
     // Increment seats back
     await commuteService.incrementSeats(ride.commuteId);
 
-    getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', new Date().toISOString(), rideId);
+    await getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', new Date().toISOString(), rideId);
     return this.getRide(rideId);
   }
 
@@ -199,7 +199,7 @@ export class RideService {
       throw new Error('Unauthorized to delete this ride');
     }
 
-    getDb().prepare('DELETE FROM rides WHERE id = ?').run(rideId);
+    await getDb().prepare('DELETE FROM rides WHERE id = ?').run(rideId);
     return true;
   }
 }
