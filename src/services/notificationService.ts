@@ -43,12 +43,12 @@ export class NotificationService {
   }
 
   async getNotifications(userId: string): Promise<Notification[]> {
-    const rows = getDb().prepare('SELECT * FROM notifications WHERE recipientUid = ? ORDER BY createdAt DESC').all(userId) as Record<string, unknown>[];
+    const rows = await getDb().prepare('SELECT * FROM notifications WHERE recipientUid = ? ORDER BY createdAt DESC').all(userId) as Record<string, unknown>[];
     return rows.map(toNotification);
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    const row = getDb().prepare('SELECT COUNT(*) as count FROM notifications WHERE recipientUid = ? AND read = 0').get(userId) as { count: number };
+    const row = await getDb().prepare('SELECT COUNT(*) as count FROM notifications WHERE recipientUid = ? AND read = 0').get(userId) as { count: number };
     return row.count;
   }
 
@@ -74,7 +74,7 @@ export class NotificationService {
       createdAt: now,
     };
 
-    getDb().prepare(`
+    await getDb().prepare(`
       INSERT INTO notifications (id, recipientUid, type, rideId, commuteId, actorUid, actorName, actorPhoto, startPoint, destination, departureTime, read, createdAt)
       VALUES (@id, @recipientUid, @type, @rideId, @commuteId, @actorUid, @actorName, @actorPhoto, @startPoint, @destination, @departureTime, @read, @createdAt)
     `).run(notifData);
@@ -88,19 +88,19 @@ export class NotificationService {
   }
 
   async markAsRead(userId: string, notificationId: string): Promise<void> {
-    getDb().prepare('UPDATE notifications SET read = 1 WHERE id = ? AND recipientUid = ?').run(notificationId, userId);
+    await getDb().prepare('UPDATE notifications SET read = 1 WHERE id = ? AND recipientUid = ?').run(notificationId, userId);
   }
 
   async markAllAsRead(userId: string): Promise<void> {
-    getDb().prepare('UPDATE notifications SET read = 1 WHERE recipientUid = ? AND read = 0').run(userId);
+    await getDb().prepare('UPDATE notifications SET read = 1 WHERE recipientUid = ? AND read = 0').run(userId);
   }
 
   async deleteNotification(userId: string, notificationId: string): Promise<void> {
-    getDb().prepare('DELETE FROM notifications WHERE id = ? AND recipientUid = ?').run(notificationId, userId);
+    await getDb().prepare('DELETE FROM notifications WHERE id = ? AND recipientUid = ?').run(notificationId, userId);
   }
 
   async deleteAllNotifications(userId: string): Promise<void> {
-    getDb().prepare('DELETE FROM notifications WHERE recipientUid = ?').run(userId);
+    await getDb().prepare('DELETE FROM notifications WHERE recipientUid = ?').run(userId);
   }
 
   async createRideRequestNotification(

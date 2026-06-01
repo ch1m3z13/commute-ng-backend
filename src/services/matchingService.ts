@@ -67,7 +67,7 @@ export class MatchingService {
     const desiredMinutes = timeToMinutes(desiredTime);
 
     // Fetch all active offer commutes that have coordinates
-    const rows = getDb().prepare(`
+    const rows = await getDb().prepare(`
       SELECT * FROM commutes
       WHERE type = 'offer'
         AND status = 'active'
@@ -158,7 +158,7 @@ export class MatchingService {
       return [];
     }
 
-    const rows = getDb().prepare(`
+    const rows = await getDb().prepare(`
       SELECT * FROM commutes
       WHERE type = 'request'
         AND status = 'active'
@@ -234,7 +234,7 @@ export class MatchingService {
       return [];
     }
 
-    const rows = getDb().prepare(`
+    const rows = await getDb().prepare(`
       SELECT * FROM commutes
       WHERE type = 'offer'
         AND status = 'active'

@@ -33,9 +33,9 @@ export class GeocodingService {
     this.lastRequestTime = Date.now();
   }
 
-  private getCache(query: string): CachedGeocode | null {
+  private async getCache(query: string): Promise<CachedGeocode | null> {
     const normalized = normalizeQuery(query);
-    const row = getDb().prepare(
+    const row = await getDb().prepare(
       'SELECT lat, lng, displayName FROM geocache WHERE query = ?'
     ).get(normalized) as { lat: number; lng: number; displayName: string } | undefined;
     if (row) {
@@ -44,16 +44,16 @@ export class GeocodingService {
     return null;
   }
 
-  private setCache(query: string, result: GeocodeResult): void {
+  private async setCache(query: string, result: GeocodeResult): Promise<void> {
     const normalized = normalizeQuery(query);
-    getDb().prepare(
-      'INSERT OR REPLACE INTO geocache (query, lat, lng, raw_json, createdAt) VALUES (?, ?, ?, ?, ?)'
+    await getDb().prepare(
+      'INSERT INTO geocache (query, lat, lng, raw_json, createdAt) VALUES (?, ?, ?, ?, ?) ON CONFLICT (query) DO UPDATE SET lat = EXCLUDED.lat, lng = EXCLUDED.lng, raw_json = EXCLUDED.raw_json, createdAt = EXCLUDED.createdAt'
     ).run(normalized, result.lat, result.lng, JSON.stringify(result.raw), new Date().toISOString());
   }
 
   async geocode(query: string): Promise<GeocodeResult> {
     // Check cache first
-    const cached = this.getCache(query);
+    const cached = await this.getCache(query);
     if (cached) {
       return {
         lat: cached.lat,
@@ -100,7 +100,7 @@ export class GeocodingService {
       raw: data[0],
     };
 
-    this.setCache(query, result);
+    await this.setCache(query, result);
     return result;
   }
 

@@ -79,7 +79,7 @@ async function seed() {
 
   for (const location of ABUJA_LOCATIONS) {
     // Check if already cached
-    const existing = db.prepare('SELECT 1 FROM geocache WHERE query = ?').get(location.toLowerCase().trim());
+    const existing = await db.prepare('SELECT 1 FROM geocache WHERE query = ?').get(location.toLowerCase().trim());
     if (existing) {
       skipped++;
       continue;
