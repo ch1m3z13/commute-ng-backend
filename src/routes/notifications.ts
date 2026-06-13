@@ -33,7 +33,7 @@ router.get('/stream', authenticateToken, async (req: AuthenticatedRequest, res: 
 router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const notifications = await notificationService.getNotifications(req.user!.uid);
-    return res.json(notifications);
+    return res.json({ notifications });
   } catch (error) {
     console.error('Error fetching notifications:', error);
     return res.status(500).json({ error: 'Failed to fetch notifications' });

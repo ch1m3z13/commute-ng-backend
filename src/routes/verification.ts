@@ -8,7 +8,7 @@ import {
   validateNinFormat,
   computeTier,
   toIdCardStatus,
-  sendSms,
+  sendOtpEmail,
 } from '../services/verificationService.js';
 import { z } from 'zod';
 
@@ -16,12 +16,7 @@ const router = Router();
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
-const sendOtpSchema = z.object({
-  mobileNumber: z.string().regex(/^\d{10,15}$/, 'Invalid phone number format'),
-});
-
 const verifyOtpSchema = z.object({
-  mobileNumber: z.string(),
   code: z.string().length(6, 'OTP must be 6 digits'),
 });
 
@@ -43,7 +38,7 @@ router.get('/status', authenticateToken, async (req: AuthenticatedRequest, res: 
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const phoneVerified = Boolean(user.phoneVerified);
+    const emailVerified = Boolean(user.emailVerified);
     const ninVerified  = Boolean(user.ninVerified);
     const idCardVerified = Boolean(user.idCardVerified);
     const idCardStatus = toIdCardStatus(
@@ -52,16 +47,15 @@ router.get('/status', authenticateToken, async (req: AuthenticatedRequest, res: 
       user.verificationStatus ?? 'unverified',
     );
 
-    const tier = computeTier({ phoneVerified, ninVerified, idCardVerified });
+    const tier = computeTier({ emailVerified, ninVerified, idCardVerified });
 
     return res.json({
       tier,
-      phoneVerified,
+      emailVerified,
       ninVerified,
       idCardVerified,
       idCardStatus,
       rejectionReason: user.rejectionReason ?? undefined,
-      // Backward-compat
       isVerified: idCardVerified,
       verificationStatus: user.verificationStatus ?? 'unverified',
     });
@@ -72,22 +66,20 @@ router.get('/status', authenticateToken, async (req: AuthenticatedRequest, res: 
 });
 
 // ─── POST /api/verification/otp/send ─────────────────────────────────────────
-// Generates a 6-digit OTP and sends it to the given mobile number.
-// Rate-limit: the same number can only request a new OTP once per 2 minutes.
+// Generates a 6-digit OTP and sends it to the user's registered email.
+// Rate-limit: the same user can only request a new OTP once per 2 minutes.
 
-const otpSendTtlSeconds = 120; // 2 minutes
-// In-memory rate-limit store (per-process). For multi-instance deploy, use Redis.
+const otpSendTtlSeconds = 120;
 const otpRateLimit: Record<string, number> = {};
 
 router.post('/otp/send', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const parsed = sendOtpSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid phone number', details: parsed.error.errors });
+    const user = await userService.getUser(req.user!.uid);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    const { mobileNumber } = parsed.data;
-    const key = `${req.user!.uid}:${mobileNumber}`;
+    const key = req.user!.uid;
     const now = Date.now();
 
     if (otpRateLimit[key] && now - otpRateLimit[key] < otpSendTtlSeconds * 1000) {
@@ -99,14 +91,13 @@ router.post('/otp/send', authenticateToken, async (req: AuthenticatedRequest, re
     }
 
     const otp = await generateAndStoreOtp(req.user!.uid);
-    await sendSms(mobileNumber, `Your CommuteNG verification code is: ${otp}. It expires in 10 minutes.`);
+    await sendOtpEmail(user.email, otp);
 
     otpRateLimit[key] = now;
 
     return res.json({
       message: 'OTP sent',
       expiresInSeconds: 10 * 60,
-      // In development only — remove in production
       ...(process.env.NODE_ENV !== 'production' ? { _debug_otp: otp } : {}),
     });
   } catch (error) {
@@ -116,7 +107,7 @@ router.post('/otp/send', authenticateToken, async (req: AuthenticatedRequest, re
 });
 
 // ─── POST /api/verification/otp/verify ────────────────────────────────────────
-// Verifies the OTP code. On success, marks phoneVerified = 1.
+// Verifies the OTP code. On success, marks emailVerified = 1.
 
 router.post('/otp/verify', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -125,7 +116,7 @@ router.post('/otp/verify', authenticateToken, async (req: AuthenticatedRequest, 
       return res.status(400).json({ error: 'Invalid input', details: parsed.error.errors });
     }
 
-    const { mobileNumber, code } = parsed.data;
+    const { code } = parsed.data;
 
     const valid = await verifyOtp(req.user!.uid, code);
     if (!valid) {
@@ -135,13 +126,7 @@ router.post('/otp/verify', authenticateToken, async (req: AuthenticatedRequest, 
       });
     }
 
-    // Update the user's mobile number if it's new or changed
-    const user = await userService.getUser(req.user!.uid);
-    if (user && user.mobileNumber !== mobileNumber) {
-      await userService.updateUser(req.user!.uid, { mobileNumber });
-    }
-
-    return res.json({ message: 'Phone number verified', phoneVerified: true });
+    return res.json({ message: 'Email verified', emailVerified: true });
   } catch (error) {
     console.error('Error verifying OTP:', error);
     return res.status(500).json({ error: 'Failed to verify OTP' });
@@ -150,8 +135,6 @@ router.post('/otp/verify', authenticateToken, async (req: AuthenticatedRequest, 
 
 // ─── POST /api/verification/nin/validate ──────────────────────────────────────
 // Validates NIN format. On success, marks ninVerified = 1.
-// Full government NIN verification (NIMC API) requires authorized credentials
-// and is done manually by admins for now.
 
 router.post('/nin/validate', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -211,13 +194,13 @@ router.post('/id-card/submit', authenticateToken, async (req: AuthenticatedReque
 router.post('/resend-otp', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await userService.getUser(req.user!.uid);
-    if (!user?.mobileNumber) {
-      return res.status(400).json({ error: 'No mobile number on file. Submit your phone number first.' });
+    if (!user?.email) {
+      return res.status(400).json({ error: 'No email on file. Please register first.' });
     }
 
     await clearOtp(req.user!.uid);
     const otp = await generateAndStoreOtp(req.user!.uid);
-    await sendSms(user.mobileNumber, `Your CommuteNG verification code is: ${otp}. It expires in 10 minutes.`);
+    await sendOtpEmail(user.email, otp);
 
     return res.json({
       message: 'OTP resent',
@@ -232,8 +215,6 @@ router.post('/resend-otp', authenticateToken, async (req: AuthenticatedRequest, 
 
 // ─── PATCH /api/verification/admin/:uid ───────────────────────────────────────
 // Admin approves or rejects a user's ID card verification.
-// On approval: sets idCardVerified = 1 and verificationStatus = 'verified'.
-// On rejection: sets verificationStatus = 'rejected' and stores the reason.
 
 router.patch('/admin/:uid', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -267,7 +248,6 @@ router.patch('/admin/:uid', authenticateToken, async (req: AuthenticatedRequest,
       await userService.setRejectionReason(uid, rejectionReason ?? 'Your ID card could not be verified. Please submit a clearer image.');
       await userService.updateVerificationStatus(uid, 'rejected');
     } else {
-      // Just update status to pending (admin re-opening review)
       await userService.updateVerificationStatus(uid, 'pending');
     }
 

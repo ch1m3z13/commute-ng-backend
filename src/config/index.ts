@@ -12,4 +12,9 @@ export const config = {
   tiktokClientId: process.env.TIKTOK_CLIENT_ID || '',
   tiktokClientSecret: process.env.TIKTOK_CLIENT_SECRET || '',
   frontendBaseUrl: process.env.FRONTEND_BASE_URL || 'http://localhost:3000',
+  smtpHost: process.env.SMTP_HOST || 'live.smtp.mailtrap.io',
+  smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+  smtpUser: process.env.SMTP_USER || 'api',
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpFrom: process.env.SMTP_FROM || 'noreply@mailtrap.io',
 };

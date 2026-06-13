@@ -233,6 +233,11 @@ export class UserService {
       .run({ v: verified ? 1 : 0, now: new Date().toISOString(), uid: userId });
   }
 
+  async setEmailVerified(userId: string, verified: boolean): Promise<void> {
+    await getDb().prepare('UPDATE users SET emailVerified = @v, updatedAt = @now WHERE uid = @uid')
+      .run({ v: verified ? 1 : 0, now: new Date().toISOString(), uid: userId });
+  }
+
   async setNinVerified(userId: string, verified: boolean): Promise<void> {
     await getDb().prepare('UPDATE users SET ninVerified = @v, updatedAt = @now WHERE uid = @uid')
       .run({ v: verified ? 1 : 0, now: new Date().toISOString(), uid: userId });

@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
+import nodemailer from 'nodemailer';
 import { getDb } from '../config/database.js';
 import { config } from '../config/index.js';
 import { VerificationTier } from '../models/types.js';
@@ -11,7 +12,7 @@ const OTP_TTL_MINUTES = 10;
 const OTP_HASH_ROUNDS = 10;
 
 export async function generateAndStoreOtp(uid: string): Promise<string> {
-  const rawOtp = randomBytes(3).readUInt32BE(0).toString().padStart(OTP_LENGTH, '0').slice(0, OTP_LENGTH);
+  const rawOtp = randomBytes(4).readUInt32BE(0).toString().padStart(OTP_LENGTH, '0').slice(0, OTP_LENGTH);
   const hashed = await bcrypt.hash(rawOtp, OTP_HASH_ROUNDS);
   const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000).toISOString();
 
@@ -19,7 +20,7 @@ export async function generateAndStoreOtp(uid: string): Promise<string> {
     'UPDATE users SET otpCode = @otpCode, otpExpiresAt = @otpExpiresAt WHERE uid = @uid'
   ).run({ otpCode: hashed, otpExpiresAt: expiresAt, uid });
 
-  return rawOtp; // Return plain OTP — caller must deliver it securely
+  return rawOtp;
 }
 
 export async function verifyOtp(uid: string, rawOtp: string): Promise<boolean> {
@@ -33,9 +34,9 @@ export async function verifyOtp(uid: string, rawOtp: string): Promise<boolean> {
   const match = await bcrypt.compare(rawOtp, row.otpCode);
   if (!match) return false;
 
-  // Mark phone as verified and clear OTP
+  // Mark email as verified and clear OTP
   await getDb().prepare(
-    'UPDATE users SET phoneVerified = 1, otpCode = NULL, otpExpiresAt = NULL WHERE uid = @uid'
+    'UPDATE users SET emailVerified = 1, otpCode = NULL, otpExpiresAt = NULL WHERE uid = @uid'
   ).run({ uid });
 
   return true;
@@ -82,13 +83,13 @@ export function validateNinFormat(nin: string): { valid: boolean; error?: string
 // ─── Tier Computation ─────────────────────────────────────────────────────────
 
 export function computeTier(flags: {
-  phoneVerified: boolean;
+  emailVerified: boolean;
   ninVerified: boolean;
   idCardVerified: boolean;
 }): VerificationTier {
-  if (flags.phoneVerified && flags.ninVerified && flags.idCardVerified) return 'full';
-  if (flags.phoneVerified && flags.ninVerified) return 'standard';
-  if (flags.phoneVerified) return 'basic';
+  if (flags.emailVerified && flags.ninVerified && flags.idCardVerified) return 'full';
+  if (flags.emailVerified && flags.ninVerified) return 'standard';
+  if (flags.emailVerified) return 'basic';
   return 'basic' as VerificationTier;
 }
 
@@ -100,53 +101,64 @@ export function toIdCardStatus(idCardVerified: boolean, idCardUrl: string | null
   return 'not_submitted';
 }
 
-// ─── SMS Delivery ─────────────────────────────────────────────────────────────
+// ─── Email Delivery ───────────────────────────────────────────────────────────
 
-/**
- * Send an SMS message.
- *
- * In production, configure the following environment variables for Twilio:
- *   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
- *   TWILIO_AUTH_TOKEN=your_auth_token
- *   TWILIO_PHONE_NUMBER=+234xxxxxxxxxx
- *
- * If Twilio is not configured, the OTP is logged to the console in development.
- */
-export async function sendSms(to: string, body: string): Promise<void> {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = process.env;
+let transporter: nodemailer.Transporter | null = null;
 
-  if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const twilio = require('twilio') as { default: (sid: string, token: string) => { messages: { create: (opts: Record<string, string>) => Promise<unknown> } } };
-    const client = twilio.default(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-    const e164 = toE164(to);
-    await client.messages.create({
-      body,
-      from: TWILIO_PHONE_NUMBER,
-      to: e164,
+function getTransporter(): nodemailer.Transporter {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: config.smtpHost,
+      port: config.smtpPort,
+      secure: config.smtpPort === 465,
+      auth: {
+        user: config.smtpUser,
+        pass: config.smtpPass,
+      },
     });
-  } else {
-    // Development fallback — log OTP to console
-    console.warn('[SMS] Twilio not configured. To: ' + to + ' | Body: ' + body);
   }
+  return transporter;
 }
 
 /**
- * Normalize a Nigerian mobile number to E.164 format.
- * Accepts: 0805..., +234805..., 234805...
- * Returns: +234805...
+ * Send a verification OTP email via SMTP (Mailtrap or any SMTP server).
+ *
+ * Environment variables:
+ *   SMTP_HOST  — SMTP server hostname
+ *   SMTP_PORT  — SMTP server port (default: 587)
+ *   SMTP_USER  — SMTP username
+ *   SMTP_PASS  — SMTP password
+ *   SMTP_FROM  — sender email address
+ *
+ * Falls back to console logging in development when credentials are missing.
  */
-function toE164(number: string): string {
-  const digits = number.replace(/\D/g, '');
-  if (digits.startsWith('234') && digits.length === 14) {
-    return `+${digits}`;
+export async function sendOtpEmail(to: string, otp: string): Promise<void> {
+  const { smtpHost, smtpUser, smtpPass, smtpFrom } = config;
+
+  if (smtpHost && smtpUser && smtpPass) {
+    const mailer = getTransporter();
+    await mailer.sendMail({
+      from: smtpFrom,
+      to,
+      subject: 'CommuteNG Verification Code',
+      text: `Your CommuteNG verification code is: ${otp}. It expires in 10 minutes.`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="font-size: 24px; font-weight: 700; color: #16a34a; margin: 0;">CommuteNG</h1>
+          </div>
+          <div style="background: #f9fafb; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
+            <p style="font-size: 14px; color: #374151; margin: 0 0 16px;">Your verification code is:</p>
+            <p style="font-size: 32px; font-weight: 700; letter-spacing: 0.15em; color: #111827; margin: 0; font-family: monospace;">${otp}</p>
+          </div>
+          <p style="font-size: 13px; color: #6b7280; text-align: center; margin: 0;">
+            This code expires in <strong>10 minutes</strong>. If you did not request this code, you can safely ignore this email.
+          </p>
+        </div>
+      `,
+    });
+  } else {
+    // Development fallback — log OTP to console
+    console.warn('[Email] SMTP not configured. To: ' + to + ' | OTP: ' + otp);
   }
-  if (digits.startsWith('0') && digits.length === 11) {
-    return `+234${digits.slice(1)}`;
-  }
-  // Already digits, assume it's an 810... number without country code
-  if (digits.length === 10) {
-    return `+234${digits}`;
-  }
-  return `+${digits}`;
 }

@@ -19,6 +19,7 @@ function toCommute(row: Record<string, unknown>): Commute {
     seatsRemaining: row.seatsRemaining != null ? Number(row.seatsRemaining) : undefined,
     pickupRadiusMeters: row.pickupRadiusMeters != null ? Number(row.pickupRadiusMeters) : 2000,
     timeFlexibilityMinutes: row.timeFlexibilityMinutes != null ? Number(row.timeFlexibilityMinutes) : 30,
+    authorRating: row.authorRating != null ? Number(row.authorRating) : undefined,
   } as unknown as Commute;
 }
 
@@ -66,17 +67,19 @@ export class MatchingService {
 
     const desiredMinutes = timeToMinutes(desiredTime);
 
-    // Fetch all active offer commutes that have coordinates
+    // Fetch all active offer commutes that have coordinates, joined with user rating
     const rows = await getDb().prepare(`
-      SELECT * FROM commutes
-      WHERE type = 'offer'
-        AND status = 'active'
-        AND shift = ?
-        AND startLat IS NOT NULL
-        AND startLng IS NOT NULL
-        AND destLat IS NOT NULL
-        AND destLng IS NOT NULL
-      ORDER BY createdAt DESC
+      SELECT c.*, u.rating as authorRating
+      FROM commutes c
+      LEFT JOIN users u ON c.authorUid = u.uid
+      WHERE c.type = 'offer'
+        AND c.status = 'active'
+        AND c.shift = ?
+        AND c.startLat IS NOT NULL
+        AND c.startLng IS NOT NULL
+        AND c.destLat IS NOT NULL
+        AND c.destLng IS NOT NULL
+      ORDER BY c.createdAt DESC
     `).all(shift) as Record<string, unknown>[];
 
     const commutes = rows.map(toCommute);

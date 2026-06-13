@@ -10,6 +10,7 @@ function toRide(row: Record<string, unknown>): Ride {
     ...row,
     matchScore: row.matchScore != null ? Number(row.matchScore) : undefined,
     detourMeters: row.detourMeters != null ? Number(row.detourMeters) : undefined,
+    passengerPhotoURL: row.passengerPhoto ?? row.passengerPhotoURL ?? null,
   } as unknown as Ride;
 }
 
@@ -21,12 +22,22 @@ export class RideService {
   }
 
   async getRidesForPassenger(passengerUid: string): Promise<Ride[]> {
-    const rows = await getDb().prepare('SELECT * FROM rides WHERE passengerUid = ? ORDER BY createdAt DESC').all(passengerUid) as Record<string, unknown>[];
+    const rows = await getDb().prepare(`
+      SELECT r.*, u.displayName as driverName, u.photoURL as driverPhotoURL
+      FROM rides r
+      LEFT JOIN users u ON r.driverUid = u.uid
+      WHERE r.passengerUid = ? ORDER BY r.createdAt DESC
+    `).all(passengerUid) as Record<string, unknown>[];
     return rows.map(toRide);
   }
 
   async getRidesForDriver(driverUid: string): Promise<Ride[]> {
-    const rows = await getDb().prepare('SELECT * FROM rides WHERE driverUid = ? ORDER BY createdAt DESC').all(driverUid) as Record<string, unknown>[];
+    const rows = await getDb().prepare(`
+      SELECT r.*, u.displayName as passengerName, u.photoURL as passengerPhotoURL
+      FROM rides r
+      LEFT JOIN users u ON r.passengerUid = u.uid
+      WHERE r.driverUid = ? ORDER BY r.createdAt DESC
+    `).all(driverUid) as Record<string, unknown>[];
     return rows.map(toRide);
   }
 
@@ -183,8 +194,10 @@ export class RideService {
       throw new Error('Unauthorized to cancel this ride');
     }
 
-    // Increment seats back
-    await commuteService.incrementSeats(ride.commuteId);
+    // Only increment seats back if the ride was previously accepted (seat was decremented)
+    if (ride.status === 'accepted') {
+      await commuteService.incrementSeats(ride.commuteId);
+    }
 
     await getDb().prepare('UPDATE rides SET status = ?, updatedAt = ? WHERE id = ?').run('cancelled', new Date().toISOString(), rideId);
     return this.getRide(rideId);

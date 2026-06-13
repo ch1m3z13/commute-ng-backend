@@ -12,7 +12,7 @@ const router = Router();
 router.get('/my-bookings', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const rides = await rideService.getRidesForPassenger(req.user!.uid);
-    return res.json(rides);
+    return res.json({ rides });
   } catch (error) {
     console.error('Error fetching bookings:', error);
     return res.status(500).json({ error: 'Failed to fetch bookings' });
@@ -22,7 +22,7 @@ router.get('/my-bookings', authenticateToken, async (req: AuthenticatedRequest, 
 router.get('/my-requests', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const rides = await rideService.getRidesForDriver(req.user!.uid);
-    return res.json(rides);
+    return res.json({ rides });
   } catch (error) {
     console.error('Error fetching requests:', error);
     return res.status(500).json({ error: 'Failed to fetch requests' });
@@ -200,6 +200,20 @@ router.patch('/:id/complete', authenticateToken, async (req: AuthenticatedReques
     if (!ride) {
       return res.status(404).json({ error: 'Ride not found' });
     }
+
+    const otherUid = ride.driverUid === req.user!.uid ? ride.passengerUid : ride.driverUid;
+    const actor = await userService.getUser(req.user!.uid);
+    await notificationService.createNotification(otherUid, {
+      type: 'ride_completed',
+      rideId: ride.id!,
+      actorUid: req.user!.uid,
+      actorName: actor?.displayName || 'User',
+      actorPhoto: actor?.photoURL ?? undefined,
+      startPoint: ride.startPoint,
+      destination: ride.destination,
+      departureTime: ride.departureTime,
+    });
+
     return res.json(ride);
   } catch (error) {
     console.error('Error completing ride:', error);
@@ -213,6 +227,20 @@ router.patch('/:id/cancel', authenticateToken, async (req: AuthenticatedRequest,
     if (!ride) {
       return res.status(404).json({ error: 'Ride not found' });
     }
+
+    const otherUid = ride.driverUid === req.user!.uid ? ride.passengerUid : ride.driverUid;
+    const actor = await userService.getUser(req.user!.uid);
+    await notificationService.createNotification(otherUid, {
+      type: 'ride_cancelled',
+      rideId: ride.id!,
+      actorUid: req.user!.uid,
+      actorName: actor?.displayName || 'User',
+      actorPhoto: actor?.photoURL ?? undefined,
+      startPoint: ride.startPoint,
+      destination: ride.destination,
+      departureTime: ride.departureTime,
+    });
+
     return res.json(ride);
   } catch (error) {
     console.error('Error cancelling ride:', error);

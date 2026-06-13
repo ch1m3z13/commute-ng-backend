@@ -4,10 +4,48 @@ import { randomUUID } from 'node:crypto';
 import { Response } from 'express';
 
 function toNotification(row: Record<string, unknown>): Notification {
+  const title = deriveTitle(row);
+  const body = deriveBody(row);
   return {
     ...row,
     read: Boolean(row.read),
+    title,
+    body,
   } as unknown as Notification;
+}
+
+function deriveTitle(row: Record<string, unknown>): string {
+  const actorName = (row.actorName as string) || 'Someone';
+  switch (row.type) {
+    case 'ride_request': return `${actorName} wants to join your ride`;
+    case 'request_accepted': return `${actorName} accepted your ride request`;
+    case 'request_rejected': return `${actorName} declined your ride request`;
+    case 'ride_completed': return `${actorName} completed the ride`;
+    case 'ride_cancelled': return `${actorName} cancelled the ride`;
+    case 'ride_reminder': return 'Ride reminder';
+    case 'match_suggested': return 'New ride match found';
+    case 'auto_accepted': return 'Ride auto-accepted';
+    case 'capacity_update': return 'Ride capacity updated';
+    default: return 'Notification';
+  }
+}
+
+function deriveBody(row: Record<string, unknown>): string {
+  const startPoint = row.startPoint as string | null;
+  const destination = row.destination as string | null;
+  const departureTime = row.departureTime as string | null;
+  const route = startPoint && destination ? `${startPoint} → ${destination}` : '';
+  const time = departureTime ? ` at ${departureTime}` : '';
+
+  switch (row.type) {
+    case 'ride_request': return route ? `Route: ${route}${time}` : 'Tap to view details';
+    case 'request_accepted': return route ? `Your ride on ${route}${time} is confirmed.` : 'Tap to view details';
+    case 'request_rejected': return route ? `Your request for ${route} was declined.` : 'Tap to view details';
+    case 'ride_completed': return route ? `${route} has been completed.` : 'Tap to view details';
+    case 'ride_cancelled': return route ? `${route} has been cancelled.` : 'Tap to view details';
+    case 'ride_reminder': return route ? `Reminder: ${route}${time}` : 'Tap to view details';
+    default: return 'Tap to view details';
+  }
 }
 
 type SSEConnection = {

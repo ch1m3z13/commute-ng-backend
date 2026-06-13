@@ -3,7 +3,10 @@ import { ChatMessage } from '../models/types.js';
 import { randomUUID } from 'node:crypto';
 
 function toMessage(row: Record<string, unknown>): ChatMessage {
-  return row as unknown as ChatMessage;
+  return {
+    ...row,
+    body: row.text as string,
+  } as unknown as ChatMessage;
 }
 
 export class ChatService {

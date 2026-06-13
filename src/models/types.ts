@@ -2,12 +2,12 @@ export type VerificationTier = 'basic' | 'standard' | 'full';
 
 export interface VerificationStatus {
   tier: VerificationTier;
-  phoneVerified: boolean;
+  emailVerified: boolean;
   ninVerified: boolean;
   idCardVerified: boolean;
   idCardStatus: 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
   rejectionReason?: string;
-  isVerified: boolean; // alias for idCardVerified — preserved for backward compat
+  isVerified: boolean;
   verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
 }
 
@@ -26,6 +26,7 @@ export interface UserProfile {
   employmentLetterUrl?: string;
   idCardUrl?: string;
   payStubUrl?: string;
+  emailVerified?: boolean | number;
   phoneVerified?: boolean | number;
   ninVerified?: boolean | number;
   idCardVerified?: boolean | number;
@@ -87,6 +88,7 @@ export interface Commute {
   daysOfWeek?: string[];
   pickupRadiusMeters?: number;
   timeFlexibilityMinutes?: number;
+  authorRating?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -127,7 +129,7 @@ export interface MatchResult {
 
 export interface Notification {
   id?: string;
-  type: 'ride_request' | 'request_accepted' | 'request_rejected' | 'ride_reminder' | 'match_suggested' | 'auto_accepted' | 'capacity_update';
+  type: 'ride_request' | 'request_accepted' | 'request_rejected' | 'ride_reminder' | 'match_suggested' | 'auto_accepted' | 'capacity_update' | 'ride_completed' | 'ride_cancelled';
   rideId: string;
   commuteId?: string;
   actorUid: string;
@@ -139,13 +141,17 @@ export interface Notification {
   read: boolean | number;
   createdAt?: string;
   scheduledFor?: string;
+  title?: string;
+  body?: string;
 }
 
 export interface ChatMessage {
   id?: string;
+  rideId?: string;
   senderUid: string;
   senderName: string;
   senderPhoto?: string;
   text: string;
+  body?: string;
   createdAt?: string;
 }
