@@ -13,7 +13,7 @@ router.get('/:rideId', authenticateToken, async (req: AuthenticatedRequest, res:
     }
 
     const messages = await chatService.getMessages(req.params.rideId);
-    return res.json(messages);
+    return res.json({ messages });
   } catch (error) {
     console.error('Error fetching messages:', error);
     return res.status(500).json({ error: 'Failed to fetch messages' });
@@ -45,7 +45,7 @@ router.post('/:rideId', authenticateToken, async (req: AuthenticatedRequest, res
       text.trim()
     );
 
-    return res.status(201).json(message);
+    return res.status(201).json({ message });
   } catch (error) {
     console.error('Error sending message:', error);
     return res.status(500).json({ error: 'Failed to send message' });

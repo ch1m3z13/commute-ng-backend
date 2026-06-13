@@ -101,6 +101,12 @@ router.post('/otp/send', authenticateToken, async (req: AuthenticatedRequest, re
     const otp = await generateAndStoreOtp(req.user!.uid);
     await sendSms(mobileNumber, `Your CommuteNG verification code is: ${otp}. It expires in 10 minutes.`);
 
+    // Store the mobile number so resend-otp can use it before verification
+    const user = await userService.getUser(req.user!.uid);
+    if (user && user.mobileNumber !== mobileNumber) {
+      await userService.updateUser(req.user!.uid, { mobileNumber });
+    }
+
     otpRateLimit[key] = now;
 
     return res.json({

@@ -87,6 +87,7 @@ export interface Commute {
   daysOfWeek?: string[];
   pickupRadiusMeters?: number;
   timeFlexibilityMinutes?: number;
+  authorRating?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -127,7 +128,7 @@ export interface MatchResult {
 
 export interface Notification {
   id?: string;
-  type: 'ride_request' | 'request_accepted' | 'request_rejected' | 'ride_reminder' | 'match_suggested' | 'auto_accepted' | 'capacity_update';
+  type: 'ride_request' | 'request_accepted' | 'request_rejected' | 'ride_reminder' | 'match_suggested' | 'auto_accepted' | 'capacity_update' | 'ride_completed' | 'ride_cancelled';
   rideId: string;
   commuteId?: string;
   actorUid: string;
@@ -139,13 +140,17 @@ export interface Notification {
   read: boolean | number;
   createdAt?: string;
   scheduledFor?: string;
+  title?: string;
+  body?: string;
 }
 
 export interface ChatMessage {
   id?: string;
+  rideId?: string;
   senderUid: string;
   senderName: string;
   senderPhoto?: string;
   text: string;
+  body?: string;
   createdAt?: string;
 }

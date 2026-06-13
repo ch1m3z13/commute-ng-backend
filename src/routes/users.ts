@@ -98,20 +98,23 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
   }
 });
 
+const identitySchema = z.object({
+  displayName: z.string().min(1).max(100),
+  nin: z.string().length(11, { message: 'NIN must be exactly 11 digits' }).regex(/^\d+$/, { message: 'NIN must contain only numbers' }),
+  mobileNumber: z.string().regex(/^\d{10}$/, { message: 'Invalid phone number format' }).optional(),
+  company: z.string().max(100).optional(),
+});
+
 router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { displayName, mobileNumber, nin, company } = req.body;
-
-    if (!displayName || !nin) {
-      return res.status(400).json({ error: 'displayName and nin are required' });
+    const parsed = identitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid identity data', details: parsed.error.errors });
     }
 
     const user = await userService.createUser(req.user!.uid, {
       email: req.user!.email,
-      displayName,
-      mobileNumber,
-      nin,
-      company,
+      ...parsed.data,
     });
 
     return res.status(201).json(user);
@@ -132,7 +135,7 @@ router.patch('/me', authenticateToken, async (req: AuthenticatedRequest, res: Re
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    return res.json(user);
+    return res.json({ user });
   } catch (error) {
     console.error('Error updating user:', error);
     return res.status(500).json({ error: 'Failed to update user' });
@@ -150,7 +153,7 @@ router.patch('/me/vehicle', authenticateToken, async (req: AuthenticatedRequest,
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    return res.json(user);
+    return res.json({ user });
   } catch (error) {
     console.error('Error updating vehicle:', error);
     return res.status(500).json({ error: 'Failed to update vehicle' });
@@ -169,7 +172,7 @@ router.patch('/me/phone', authenticateToken, async (req: AuthenticatedRequest, r
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    return res.json(user);
+    return res.json({ user });
   } catch (error) {
     console.error('Error updating phone:', error);
     return res.status(500).json({ error: 'Failed to update phone' });
@@ -186,7 +189,7 @@ router.patch('/me/addresses', authenticateToken, async (req: AuthenticatedReques
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    return res.json(user);
+    return res.json({ user });
   } catch (error) {
     console.error('Error updating addresses:', error);
     return res.status(500).json({ error: 'Failed to update addresses' });
@@ -210,7 +213,7 @@ router.patch('/me/matching-preferences', authenticateToken, async (req: Authenti
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    return res.json(user);
+    return res.json({ user });
   } catch (error) {
     console.error('Error updating matching preferences:', error);
     return res.status(500).json({ error: 'Failed to update matching preferences' });
