@@ -2,12 +2,12 @@ export type VerificationTier = 'basic' | 'standard' | 'full';
 
 export interface VerificationStatus {
   tier: VerificationTier;
-  phoneVerified: boolean;
+  emailVerified: boolean;
   ninVerified: boolean;
   idCardVerified: boolean;
   idCardStatus: 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
   rejectionReason?: string;
-  isVerified: boolean; // alias for idCardVerified — preserved for backward compat
+  isVerified: boolean;
   verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
 }
 
@@ -26,6 +26,7 @@ export interface UserProfile {
   employmentLetterUrl?: string;
   idCardUrl?: string;
   payStubUrl?: string;
+  emailVerified?: boolean | number;
   phoneVerified?: boolean | number;
   ninVerified?: boolean | number;
   idCardVerified?: boolean | number;

@@ -89,6 +89,7 @@ export async function initializeDatabase(): Promise<void> {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS rejectionReason TEXT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS otpCode TEXT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS otpExpiresAt TIMESTAMP WITH TIME ZONE',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerified INTEGER DEFAULT 0',
   ];
   for (const sql of migrationColumns) {
     try {

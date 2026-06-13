@@ -15,7 +15,7 @@ import { getDb } from '../config/database.js';
 async function listPending() {
   await getDb();
   const rows = await getDb().prepare(
-    `SELECT uid, email, displayName, verificationStatus, idCardUrl, phoneVerified, ninVerified, idCardVerified, createdAt
+    `SELECT uid, email, displayName, verificationStatus, idCardUrl, emailVerified, ninVerified, idCardVerified, createdAt
      FROM users WHERE verificationStatus = 'pending' ORDER BY createdAt DESC`
   ).all() as Record<string, unknown>[];
 
@@ -29,7 +29,7 @@ async function listPending() {
     console.log(`  UID:     ${row.uid}`);
     console.log(`  Name:    ${row.displayName}`);
     console.log(`  Email:   ${row.email}`);
-    console.log(`  Phone:   ${row.phoneVerified ? '✓' : '✗'}  NIN: ${row.ninVerified ? '✓' : '✗'}  ID Card: ${row.idCardVerified ? '✓' : (row.idCardUrl ? 'pending' : 'not submitted')}`);
+    console.log(`  Email:   ${row.emailVerified ? '✓' : '✗'}  NIN: ${row.ninVerified ? '✓' : '✗'}  ID Card: ${row.idCardVerified ? '✓' : (row.idCardUrl ? 'pending' : 'not submitted')}`);
     console.log(`  Created: ${row.createdAt}`);
     console.log('');
   }
@@ -69,7 +69,7 @@ async function rejectUser(uid: string, reason?: string) {
 async function listUsers(search?: string) {
   await getDb();
 
-  let query = 'SELECT uid, email, displayName, verificationStatus, phoneVerified, ninVerified, idCardVerified, createdAt FROM users';
+  let query = 'SELECT uid, email, displayName, verificationStatus, emailVerified, ninVerified, idCardVerified, createdAt FROM users';
   const params: string[] = [];
 
   if (search) {
