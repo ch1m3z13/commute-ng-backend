@@ -34,8 +34,8 @@ export async function seedUser(overrides: Partial<{
   const uid = overrides.uid || 'test-user-' + Math.random().toString(36).slice(2);
   const now = new Date().toISOString();
   await getDb().prepare(`
-    INSERT INTO users (uid, displayName, email, role, isVerified, verificationStatus, createdAt, updatedAt)
-    VALUES (@uid, @displayName, @email, @role, @isVerified, @verificationStatus, @now, @now)
+    INSERT INTO users (uid, displayName, email, role, isVerified, verificationStatus, passwordHash, createdAt, updatedAt)
+    VALUES (@uid, @displayName, @email, @role, @isVerified, @verificationStatus, @passwordHash, @now, @now)
   `).run({
     uid,
     displayName: overrides.displayName || 'Test User',
@@ -43,6 +43,7 @@ export async function seedUser(overrides: Partial<{
     role: overrides.role || 'executive',
     isVerified: overrides.isVerified ?? 0,
     verificationStatus: overrides.verificationStatus || 'unverified',
+    passwordHash: overrides.passwordHash || null,
     now,
   });
   return uid;

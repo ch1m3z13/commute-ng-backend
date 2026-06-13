@@ -86,8 +86,8 @@ export class NotificationService {
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    const row = await getDb().prepare('SELECT COUNT(*) as count FROM notifications WHERE recipientUid = ? AND read = 0').get(userId) as { count: number };
-    return row.count;
+    const row = await getDb().prepare('SELECT COUNT(*) as count FROM notifications WHERE recipientUid = ? AND read = 0').get(userId) as { count: string | number };
+    return Number(row.count);
   }
 
   async createNotification(

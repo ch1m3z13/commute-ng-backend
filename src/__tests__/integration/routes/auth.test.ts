@@ -17,20 +17,6 @@ describe('GET /api/auth/:provider', () => {
     expect(res.headers.location).toContain('accounts.google.com');
   });
 
-  it('redirects to LinkedIn OAuth URL', async () => {
-    process.env.LINKEDIN_CLIENT_ID = 'test-id';
-    const res = await request(app).get('/api/auth/linkedin');
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('linkedin.com');
-  });
-
-  it('redirects to TikTok OAuth URL', async () => {
-    process.env.TIKTOK_CLIENT_ID = 'test-id';
-    const res = await request(app).get('/api/auth/tiktok');
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('tiktok.com');
-  });
-
   it('returns 400 for unsupported provider', async () => {
     const res = await request(app).get('/api/auth/facebook');
     expect(res.status).toBe(400);

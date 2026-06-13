@@ -36,10 +36,11 @@ export class GeocodingService {
   private async getCache(query: string): Promise<CachedGeocode | null> {
     const normalized = normalizeQuery(query);
     const row = await getDb().prepare(
-      'SELECT lat, lng, displayName FROM geocache WHERE query = ?'
-    ).get(normalized) as { lat: number; lng: number; displayName: string } | undefined;
+      'SELECT lat, lng, raw_json FROM geocache WHERE query = ?'
+    ).get(normalized) as { lat: number; lng: number; raw_json?: string } | undefined;
     if (row) {
-      return { lat: row.lat, lng: row.lng, displayName: row.displayName };
+      const raw = row.raw_json ? JSON.parse(row.raw_json) as Record<string, unknown> : {};
+      return { lat: row.lat, lng: row.lng, displayName: (raw.display_name as string) || '' };
     }
     return null;
   }

@@ -51,7 +51,7 @@ describe('POST /api/chat/:rideId', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ text: 'Hello!' });
     expect(res.status).toBe(201);
-    expect(res.body.text).toBe('Hello!');
+    expect(res.body.message.text).toBe('Hello!');
   });
 
   it('returns 400 for empty text', async () => {

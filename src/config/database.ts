@@ -8,6 +8,76 @@ declare module 'pg' {
 
 let pool: Pool;
 
+// PostgreSQL folds unquoted identifiers to lowercase. Map lowercase keys back to camelCase.
+const CAMEL_CASE_KEYS: Record<string, string> = {
+  displayname: 'displayName',
+  mobilenumber: 'mobileNumber',
+  isverified: 'isVerified',
+  verificationstatus: 'verificationStatus',
+  employmentletterurl: 'employmentLetterUrl',
+  idcardurl: 'idCardUrl',
+  paystuburl: 'payStubUrl',
+  phoneverified: 'phoneVerified',
+  ninverified: 'ninVerified',
+  idcardverified: 'idCardVerified',
+  rejectionreason: 'rejectionReason',
+  otpcode: 'otpCode',
+  otpexpiresat: 'otpExpiresAt',
+  emailverified: 'emailVerified',
+  carmake: 'carMake',
+  carmodel: 'carModel',
+  caryear: 'carYear',
+  platenumber: 'plateNumber',
+  passwordhash: 'passwordHash',
+  providerid: 'providerId',
+  homeaddress: 'homeAddress',
+  homelat: 'homeLat',
+  homelng: 'homeLng',
+  officeaddress: 'officeAddress',
+  officelat: 'officeLat',
+  officelng: 'officeLng',
+  matchingpreferences: 'matchingPreferences',
+  createdat: 'createdAt',
+  updatedat: 'updatedAt',
+  authoruid: 'authorUid',
+  authorname: 'authorName',
+  authorphoto: 'authorPhoto',
+  startpoint: 'startPoint',
+  startlat: 'startLat',
+  startlng: 'startLng',
+  destlat: 'destLat',
+  destlng: 'destLng',
+  departuretime: 'departureTime',
+  seatsavailable: 'seatsAvailable',
+  seatsremaining: 'seatsRemaining',
+  driveruid: 'driverUid',
+  passengeruid: 'passengerUid',
+  passengername: 'passengerName',
+  passengerphoto: 'passengerPhoto',
+  matchscore: 'matchScore',
+  detourmeters: 'detourMeters',
+  recipientuid: 'recipientUid',
+  rideid: 'rideId',
+  commuteid: 'commuteId',
+  actoruid: 'actorUid',
+  actorname: 'actorName',
+  actorphoto: 'actorPhoto',
+  pickupradiusmeters: 'pickupRadiusMeters',
+  timeflexibilityminutes: 'timeFlexibilityMinutes',
+  senderuid: 'senderUid',
+  sendername: 'senderName',
+  senderphoto: 'senderPhoto',
+  raw_json: 'rawJson',
+};
+
+function normalizeRowKeys(row: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[CAMEL_CASE_KEYS[key] ?? key] = value;
+  }
+  return normalized;
+}
+
 export function buildParameterizedQuery(sql: string, params: Record<string, unknown> | unknown[]): { text: string; values: unknown[] } {
   if (Array.isArray(params)) {
     let index = 1;
@@ -42,7 +112,8 @@ class Statement {
       ? buildParameterizedQuery(this.sql, args[0] as Record<string, unknown>)
       : buildParameterizedQuery(this.sql, args as unknown[]);
     const result = await pool.query(p.text, p.values);
-    return result.rows[0] as Record<string, unknown> | undefined;
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    return row ? normalizeRowKeys(row) : undefined;
   }
 
   async all(...args: unknown[]): Promise<Record<string, unknown>[]> {
@@ -50,7 +121,7 @@ class Statement {
       ? buildParameterizedQuery(this.sql, args[0] as Record<string, unknown>)
       : buildParameterizedQuery(this.sql, args as unknown[]);
     const result = await pool.query(p.text, p.values);
-    return result.rows as Record<string, unknown>[];
+    return result.rows.map(normalizeRowKeys);
   }
 }
 

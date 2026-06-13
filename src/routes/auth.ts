@@ -8,7 +8,7 @@ const router = Router();
 
 function resolveProvider(value: string): OAuthProvider {
   const provider = value.toLowerCase();
-  if (provider === 'google' || provider === 'linkedin' || provider === 'tiktok') {
+  if (provider === 'google') {
     return provider;
   }
   throw new Error('Unsupported OAuth provider');
@@ -44,10 +44,7 @@ router.get('/:provider/callback', async (req, res) => {
     }
 
     if (!user) {
-      const uid = profile.provider === 'tiktok'
-        ? `tiktok-${profile.providerId}`
-        : profile.providerId;
-      user = await userService.createUser(uid, {
+      user = await userService.createUser(profile.providerId, {
         email: profile.email,
         displayName: profile.displayName,
         photoURL: profile.photoURL,

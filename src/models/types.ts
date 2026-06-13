@@ -35,7 +35,7 @@ export interface UserProfile {
   carModel?: string;
   carYear?: string;
   plateNumber?: string;
-  provider?: 'google' | 'linkedin' | 'tiktok';
+  provider?: 'google';
   providerId?: string;
   passwordHash?: string;
   homeAddress?: string;

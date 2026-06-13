@@ -19,7 +19,7 @@ describe('GET /api/notifications', () => {
       .get('/api/notifications')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(Array.isArray(res.body.notifications)).toBe(true);
   });
 });
 
@@ -52,7 +52,7 @@ describe('PATCH /api/notifications/:id/read', () => {
     const res = await request(app)
       .patch(`/api/notifications/${id}/read`)
       .set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
   });
 });
 
@@ -68,6 +68,6 @@ describe('DELETE /api/notifications/:id', () => {
     const res = await request(app)
       .delete(`/api/notifications/${id}`)
       .set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
   });
 });

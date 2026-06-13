@@ -12,6 +12,7 @@ describe('notificationService', () => {
       await seedUser({ uid: 'u1' });
       const notif = await notificationService.createNotification('u1', {
         type: 'ride_request',
+        rideId: 'ride-1',
         actorUid: 'actor1',
         actorName: 'Test Actor',
         startPoint: 'Start',
