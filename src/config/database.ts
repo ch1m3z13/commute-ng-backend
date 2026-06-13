@@ -8,7 +8,7 @@ declare module 'pg' {
 
 let pool: Pool;
 
-function buildParameterizedQuery(sql: string, params: Record<string, unknown> | unknown[]): { text: string; values: unknown[] } {
+export function buildParameterizedQuery(sql: string, params: Record<string, unknown> | unknown[]): { text: string; values: unknown[] } {
   if (Array.isArray(params)) {
     let index = 1;
     const text = sql.replace(/\?/g, () => `$${index++}`);

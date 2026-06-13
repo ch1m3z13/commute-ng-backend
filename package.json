@@ -7,7 +7,10 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
@@ -32,7 +35,11 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.1",
+    "@types/supertest": "^6.0.2",
+    "esbuild": "^0.28.1",
+    "supertest": "^7.1.0",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vitest": "^3.2.1"
   }
 }
