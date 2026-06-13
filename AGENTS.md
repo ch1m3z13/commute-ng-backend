@@ -44,3 +44,8 @@ Copy `.env.example` to `.env`. Required:
 - **ESLint:** Do not fix linting until Flat Config migration is done.
 - **Database:** This is PostgreSQL, not SQLite. The `pg` Pool is async — all DB calls are `await`.
 - **Schema migrations:** Inline `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `database.ts` — additive only.
+- **README.md is stale:** It says "SQLite (via better-sqlite3)" but the codebase uses PostgreSQL. Trust AGENTS.md or the code itself.
+- **Admin script bug:** `scripts/admin-verify.ts` uses SQLite datetime syntax (`datetime('now')`) but the database is PostgreSQL. This script will fail at runtime.
+- **Dockerfile stale comment:** Line 29 says "Create directory for SQLite DB" but the app uses PostgreSQL. The comment is misleading.
+- **Security:** `.env` contains real credentials and is tracked in git history. Never commit secrets. The `.gitignore` has `.env` commented out — keep it that way.
+- **No tests:** There are no test files or test scripts. Manual verification only.
