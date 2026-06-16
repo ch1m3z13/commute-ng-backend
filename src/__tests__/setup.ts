@@ -7,7 +7,7 @@ if (!process.env.SUPABASE_DATABASE_URL && !process.env.DATABASE_URL) {
   process.env.SUPABASE_DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgresql://localhost:5432/commute_ng_test';
 }
 
-const TABLES = ['chat_messages', 'notifications', 'rides', 'commutes', 'geocache', 'users'];
+const TABLES = ['ride_ratings', 'refresh_tokens', 'chat_messages', 'notifications', 'rides', 'commutes', 'geocache', 'users'];
 
 beforeAll(async () => {
   await initializeDatabase();

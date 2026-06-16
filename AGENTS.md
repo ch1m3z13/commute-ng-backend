@@ -36,8 +36,7 @@ Copy `.env.example` to `.env`. Required:
 - `SUPABASE_DATABASE_URL` — PostgreSQL connection string
 - `JWT_SECRET` — token signing key
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`
-- `TIKTOK_CLIENT_ID`, `TIKTOK_CLIENT_SECRET`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — email provider (Mailtrap for dev)
 - `FRONTEND_BASE_URL` — for OAuth callback redirects
 
 ## Common Pitfalls

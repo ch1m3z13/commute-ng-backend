@@ -11,6 +11,7 @@ import {
   sendOtpEmail,
 } from '../services/verificationService.js';
 import { z } from 'zod';
+import { strictAuthLimiter, authLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -67,33 +68,18 @@ router.get('/status', authenticateToken, async (req: AuthenticatedRequest, res: 
 
 // ─── POST /api/verification/otp/send ─────────────────────────────────────────
 // Generates a 6-digit OTP and sends it to the user's registered email.
-// Rate-limit: the same user can only request a new OTP once per 2 minutes.
 
-const otpSendTtlSeconds = 120;
-const otpRateLimit: Record<string, number> = {};
-
-router.post('/otp/send', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/otp/send', authenticateToken, strictAuthLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await userService.getUser(req.user!.uid);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const key = req.user!.uid;
-    const now = Date.now();
-
-    if (otpRateLimit[key] && now - otpRateLimit[key] < otpSendTtlSeconds * 1000) {
-      const waitSec = Math.ceil((otpSendTtlSeconds * 1000 - (now - otpRateLimit[key])) / 1000);
-      return res.status(429).json({
-        error: 'Too many requests',
-        details: `Please wait ${waitSec} seconds before requesting a new code.`,
-      });
-    }
-
     const otp = await generateAndStoreOtp(req.user!.uid);
-    await sendOtpEmail(user.email, otp);
-
-    otpRateLimit[key] = now;
+    sendOtpEmail(user.email, otp).catch(err => {
+      console.error('[Email] Failed to send OTP:', err.message);
+    });
 
     return res.json({
       message: 'OTP sent',
@@ -109,7 +95,7 @@ router.post('/otp/send', authenticateToken, async (req: AuthenticatedRequest, re
 // ─── POST /api/verification/otp/verify ────────────────────────────────────────
 // Verifies the OTP code. On success, marks emailVerified = 1.
 
-router.post('/otp/verify', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/otp/verify', authenticateToken, strictAuthLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const parsed = verifyOtpSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -136,7 +122,7 @@ router.post('/otp/verify', authenticateToken, async (req: AuthenticatedRequest, 
 // ─── POST /api/verification/nin/validate ──────────────────────────────────────
 // Validates NIN format. On success, marks ninVerified = 1.
 
-router.post('/nin/validate', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/nin/validate', authenticateToken, authLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const parsed = validateNinSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -162,7 +148,7 @@ router.post('/nin/validate', authenticateToken, async (req: AuthenticatedRequest
 // ─── POST /api/verification/id-card/submit ────────────────────────────────────
 // Submits a government ID card URL for admin review. Sets status to 'pending'.
 
-router.post('/id-card/submit', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/id-card/submit', authenticateToken, authLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const parsed = submitIdCardSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -191,7 +177,7 @@ router.post('/id-card/submit', authenticateToken, async (req: AuthenticatedReque
 // ─── POST /api/verification/resend-otp ────────────────────────────────────────
 // Re-sends the OTP if the previous one expired (clears old OTP first, then generates new).
 
-router.post('/resend-otp', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/resend-otp', authenticateToken, strictAuthLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await userService.getUser(req.user!.uid);
     if (!user?.email) {
@@ -200,7 +186,9 @@ router.post('/resend-otp', authenticateToken, async (req: AuthenticatedRequest, 
 
     await clearOtp(req.user!.uid);
     const otp = await generateAndStoreOtp(req.user!.uid);
-    await sendOtpEmail(user.email, otp);
+    sendOtpEmail(user.email, otp).catch(err => {
+      console.error('[Email] Failed to send OTP:', err.message);
+    });
 
     return res.json({
       message: 'OTP resent',

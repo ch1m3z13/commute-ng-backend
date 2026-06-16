@@ -39,23 +39,23 @@ export class CommuteService {
     const params: Record<string, unknown> = {};
 
     if (filters.authorUid) {
-      conditions.push('authorUid = @authorUid');
+      conditions.push('c.authorUid = @authorUid');
       params.authorUid = filters.authorUid;
     }
     if (filters.type) {
-      conditions.push('type = @type');
+      conditions.push('c.type = @type');
       params.type = filters.type;
     }
     if (filters.status) {
-      conditions.push('status = @status');
+      conditions.push('c.status = @status');
       params.status = filters.status;
     }
 
-    let query = 'SELECT * FROM commutes';
+    let query = 'SELECT c.*, u.displayName as authorName, u.photoURL as authorPhoto FROM commutes c LEFT JOIN users u ON c.authorUid = u.uid';
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
     }
-    query += ' ORDER BY createdAt DESC';
+    query += ' ORDER BY c.createdAt DESC';
 
     const rows = await getDb().prepare(query).all(params) as Record<string, unknown>[];
     let commutes = rows.map(toCommute);

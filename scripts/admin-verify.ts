@@ -1,45 +1,38 @@
 import { getDb } from '../src/config/database.js';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { initializeDatabase } from '../src/config/database.js';
 
 async function verifyUser(identifier: string) {
+  await initializeDatabase();
   const db = getDb();
-  
-  // 1. Find the user by email or UID
-  const user = db.prepare('SELECT uid, email FROM users WHERE email = ? OR uid = ?').get(identifier, identifier) as any;
 
-  if (!user) {
-    console.error(`❌ User not found: ${identifier}`);
+  const result = await db.prepare('SELECT uid, email FROM users WHERE email = $1 OR uid = $1').get(identifier) as { uid: string; email: string } | undefined;
+
+  if (!result) {
+    console.error(`User not found: ${identifier}`);
     process.exit(1);
   }
 
-  const uid = user.uid;
-  const email = user.email;
+  const { uid, email } = result;
 
-  console.log(`🚀 Verifying user: ${email} (${uid})`);
+  console.log(`Verifying user: ${email} (${uid})`);
 
   try {
-    // 2. Update to verified status
-    // Note: We use the same columns expected by the frontend: 
-    // isVerified (1/0), verificationStatus ('verified'), and essentially marking ID as verified
-    const result = db.prepare(`
-      UPDATE users 
-      SET isVerified = 1, 
-          verificationStatus = 'verified', 
-          updatedAt = datetime('now') 
-      WHERE uid = ?
-    `).run(uid);
+    const updateResult = await db.prepare(`
+      UPDATE users
+      SET isVerified = 1,
+          verificationStatus = 'verified',
+          idCardVerified = 1,
+          updatedAt = $1
+      WHERE uid = $2
+    `).run(new Date().toISOString(), uid) as { rowCount: number };
 
-    if (result.changes === 0) {
+    if (updateResult.rowCount === 0) {
       throw new Error('Failed to update user status');
     }
 
-    console.log(`✅ Success! User ${email} is now fully verified.`);
-    console.log(`👉 They can now offer and book rides with full trust.`);
+    console.log(`Success! User ${email} is now fully verified.`);
   } catch (error) {
-    console.error(`❌ Error verifying user: ${error instanceof Error ? error.message : error}`);
+    console.error(`Error verifying user: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
   }
 }

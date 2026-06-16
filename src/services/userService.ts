@@ -2,6 +2,8 @@ import { getDb } from '../config/database.js';
 import { UserProfile, MatchingPreferences, DEFAULT_MATCHING_PREFERENCES } from '../models/types.js';
 import { randomUUID } from 'node:crypto';
 
+type UserProfileWithoutPassword = Omit<UserProfile, 'passwordHash'>;
+
 function toUserProfile(row: Record<string, unknown>): UserProfile {
   return {
     ...row,
@@ -11,6 +13,11 @@ function toUserProfile(row: Record<string, unknown>): UserProfile {
     officeLat: row.officeLat != null ? Number(row.officeLat) : undefined,
     officeLng: row.officeLng != null ? Number(row.officeLng) : undefined,
   } as unknown as UserProfile;
+}
+
+export function sanitizeUser(user: UserProfile): UserProfileWithoutPassword {
+  const { passwordHash, ...safeUser } = user as UserProfile & { passwordHash?: string };
+  return safeUser;
 }
 
 export class UserService {
@@ -76,11 +83,22 @@ export class UserService {
   }
 
   async updateUser(userId: string, data: Partial<UserProfile>): Promise<UserProfile | null> {
+    const ALLOWED_COLUMNS = new Set([
+      'displayName', 'mobileNumber', 'nin', 'company', 'photoURL',
+      'verificationStatus', 'employmentLetterUrl', 'idCardUrl', 'payStubUrl',
+      'carMake', 'carModel', 'carYear', 'plateNumber',
+      'provider', 'providerId', 'passwordHash',
+      'homeAddress', 'homeLat', 'homeLng', 'officeAddress', 'officeLat', 'officeLng',
+      'matchingPreferences', 'emailVerified', 'phoneVerified', 'ninVerified',
+      'idCardVerified', 'rejectionReason', 'otpCode', 'otpExpiresAt',
+      'passwordResetToken', 'passwordResetExpiresAt', 'role',
+    ]);
+
     const sets: string[] = [];
     const values: Record<string, unknown> = { uid: userId };
 
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined && key !== 'uid' && key !== 'isVerified') {
+      if (value !== undefined && key !== 'uid' && key !== 'isVerified' && ALLOWED_COLUMNS.has(key)) {
         sets.push(`${key} = @${key}`);
         values[key] = value;
       }
@@ -223,9 +241,7 @@ export class UserService {
   async checkIsAdmin(uid: string): Promise<boolean> {
     const user = await this.getUser(uid);
     if (!user) return false;
-    if (user.role === 'admin') return true;
-    if (user.email === 'ChimeO81@gmail.com' && user.verificationStatus === 'verified') return true;
-    return false;
+    return user.role === 'admin';
   }
 
   async setPhoneVerified(userId: string, verified: boolean): Promise<void> {

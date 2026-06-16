@@ -4,92 +4,11 @@ Express.js API backend for CommuteNG - Exclusive commuting for Abuja professiona
 
 ## Tech Stack
 
-- **Runtime:** Node.js with TypeScript
+- **Runtime:** Node.js 22 with TypeScript
 - **Framework:** Express.js
-- **Database:** SQLite (via better-sqlite3)
+- **Database:** PostgreSQL (via `pg` Pool)
 - **Authentication:** JWT (jsonwebtoken) with bcrypt password hashing
 - **Validation:** Zod
-
-## Project Structure
-
-```
-src/
-├── config/
-│   ├── auth.ts          # JWT & bcrypt helpers
-│   ├── database.ts      # SQLite initialization & schema
-│   └── index.ts         # Environment configuration
-├── middleware/
-│   ├── auth.ts          # JWT authentication
-│   └── errorHandler.ts  # Global error handling
-├── models/
-│   └── types.ts         # TypeScript interfaces
-├── routes/
-│   ├── chat.ts          # Chat messages API
-│   ├── commutes.ts       # Commutes (rides offered) API
-│   ├── index.ts          # Route exports
-│   ├── notifications.ts  # Notifications API
-│   ├── rides.ts         # Ride bookings API
-│   ├── users.ts         # User profiles + auth API
-│   └── verification.ts  # Verification status API
-├── services/
-│   ├── chatService.ts
-│   ├── commuteService.ts
-│   ├── notificationService.ts
-│   ├── rideService.ts
-│   └── userService.ts
-└── server.ts           # Express app entry point
-```
-
-## API Endpoints
-
-### Auth (`/api/users`)
-- `POST /users/register` - Register with email, password, displayName. Returns `{ token, uid }`.
-- `POST /users/login` - Login with email + password. Returns `{ token, uid }`.
-
-### Users (`/api/users`)
-- `GET /users/me` - Get current user profile
-- `POST /users` - Create user profile (after OAuth or manual identity setup)
-- `PATCH /users/me` - Update current user
-- `PATCH /users/me/vehicle` - Update vehicle info
-- `PATCH /users/me/phone` - Update phone number
-- `GET /users/drivers/top-rated` - Get top-rated verified drivers
-- `GET /users/:uid` - Get user by ID
-
-### Commutes (`/api/commutes`)
-- `GET /commutes` - List commutes (with filters)
-- `GET /commutes/search?from=X&to=Y` - Search available rides
-- `GET /commutes/my` - Get current user's offered commutes
-- `GET /commutes/:id` - Get commute by ID
-- `POST /commutes` - Create new commute
-- `PATCH /commutes/:id` - Update commute
-- `PATCH /commutes/:id/cancel` - Cancel commute
-- `DELETE /commutes/:id` - Delete commute
-
-### Rides (`/api/rides`)
-- `GET /rides/my-bookings` - Get current user's ride bookings
-- `GET /rides/my-requests` - Get ride requests for driver's commutes
-- `GET /rides/:id` - Get ride by ID
-- `POST /rides` - Request a ride (create booking)
-- `PATCH /rides/:id/accept` - Accept ride request
-- `PATCH /rides/:id/reject` - Reject ride request
-- `PATCH /rides/:id/complete` - Mark ride as completed
-- `PATCH /rides/:id/cancel` - Cancel ride
-
-### Notifications (`/api/notifications`)
-- `GET /notifications` - Get user notifications
-- `GET /notifications/unread-count` - Get unread count
-- `PATCH /notifications/:id/read` - Mark as read
-- `PATCH /notifications/read-all` - Mark all as read
-- `DELETE /notifications/:id` - Delete notification
-
-### Chat (`/api/chat`)
-- `GET /chat/:rideId` - Get chat messages for a ride
-- `POST /chat/:rideId` - Send a message
-
-### Verification (`/api/verification`)
-- `GET /verification/status` - Get verification status
-- `POST /verification/submit` - Submit verification documents
-- `PATCH /verification/admin/:uid` - Admin: update verification status
 
 ## Setup
 
@@ -98,7 +17,7 @@ src/
    cp .env.example .env
    ```
 
-2. Set a strong `JWT_SECRET` in `.env`.
+2. Set a strong `JWT_SECRET` in `.env` and configure `SUPABASE_DATABASE_URL`.
 
 3. Install dependencies:
    ```bash
@@ -110,20 +29,27 @@ src/
    npm run dev
    ```
 
-The SQLite database file will be created automatically at the path specified by `DB_PATH`.
+The PostgreSQL database schema is created automatically on first run.
 
-## Authentication
+## Quick Commands
 
-All API endpoints (except `/health`, `/api/users/register`, and `/api/users/login`) require JWT authentication.
-
-Include the token in the `Authorization` header:
+```bash
+npm run dev          # tsx watch, port 3001
+npm run build        # tsc -> dist/
+npm start            # node dist/server.js
+npm test             # vitest run (requires PostgreSQL)
+npm run test:watch   # vitest watch
 ```
-Authorization: Bearer <jwt-token>
+
+## Testing
+
+Tests require a PostgreSQL database. Set `TEST_DATABASE_URL` in `.env`:
+
+```bash
+TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/commute_ng_test
 ```
 
 ## Scripts
 
-- `npm run dev` - Start development server with hot reload
-- `npm run build` - Compile TypeScript to JavaScript
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
+- `scripts/admin-verify.ts` - Verify a user by email or UID (admin tool)
+- `scripts/init-db.ts` - Initialize database schema

@@ -39,6 +39,8 @@ const CAMEL_CASE_KEYS: Record<string, string> = {
   matchingpreferences: 'matchingPreferences',
   createdat: 'createdAt',
   updatedat: 'updatedAt',
+  passwordresettoken: 'passwordResetToken',
+  passwordresetexpiresat: 'passwordResetExpiresAt',
   authoruid: 'authorUid',
   authorname: 'authorName',
   authorphoto: 'authorPhoto',
@@ -68,6 +70,12 @@ const CAMEL_CASE_KEYS: Record<string, string> = {
   sendername: 'senderName',
   senderphoto: 'senderPhoto',
   raw_json: 'rawJson',
+  token_hash: 'tokenHash',
+  expires_at: 'expiresAt',
+  created_at: 'createdAt',
+  ride_id: 'rideId',
+  rater_uid: 'raterUid',
+  ratee_uid: 'rateeUid',
 };
 
 function normalizeRowKeys(row: Record<string, unknown>): Record<string, unknown> {
@@ -146,6 +154,8 @@ export async function initializeDatabase(): Promise<void> {
     `CREATE TABLE IF NOT EXISTS rides (id TEXT PRIMARY KEY, commuteId TEXT NOT NULL, driverUid TEXT NOT NULL, passengerUid TEXT NOT NULL, passengerName TEXT, passengerPhoto TEXT, startPoint TEXT NOT NULL, destination TEXT NOT NULL, departureTime TEXT NOT NULL, seatsAvailable INTEGER, carMake TEXT, carModel TEXT, carYear TEXT, plateNumber TEXT, status TEXT DEFAULT 'pending', matchScore DOUBLE PRECISION, detourMeters DOUBLE PRECISION, createdAt TIMESTAMP WITH TIME ZONE, updatedAt TIMESTAMP WITH TIME ZONE)`,
     `CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, recipientUid TEXT NOT NULL, type TEXT NOT NULL, rideId TEXT, commuteId TEXT, actorUid TEXT NOT NULL, actorName TEXT NOT NULL, actorPhoto TEXT, startPoint TEXT, destination TEXT, departureTime TEXT, read INTEGER DEFAULT 0, createdAt TIMESTAMP WITH TIME ZONE)`,
     `CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, rideId TEXT NOT NULL, senderUid TEXT NOT NULL, senderName TEXT NOT NULL, senderPhoto TEXT, text TEXT NOT NULL, createdAt TIMESTAMP WITH TIME ZONE)`,
+    `CREATE TABLE IF NOT EXISTS refresh_tokens (token_hash TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(uid) ON DELETE CASCADE, expires_at TIMESTAMP WITH TIME ZONE NOT NULL, created_at TIMESTAMP WITH TIME ZONE NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS ride_ratings (id TEXT PRIMARY KEY, ride_id TEXT NOT NULL REFERENCES rides(id) ON DELETE CASCADE, rater_uid TEXT NOT NULL REFERENCES users(uid), ratee_uid TEXT NOT NULL REFERENCES users(uid), rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5), comment TEXT, created_at TIMESTAMP WITH TIME ZONE NOT NULL, UNIQUE(ride_id, rater_uid))`,
   ];
 
   for (const sql of createTableSQL) {
@@ -161,6 +171,10 @@ export async function initializeDatabase(): Promise<void> {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS otpCode TEXT',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS otpExpiresAt TIMESTAMP WITH TIME ZONE',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS emailVerified INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordResetToken TEXT',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS passwordResetExpiresAt TIMESTAMP WITH TIME ZONE',
+    'CREATE INDEX IF NOT EXISTS idx_refresh_tokens_uid ON refresh_tokens(uid)',
+    'CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at)',
   ];
   for (const sql of migrationColumns) {
     try {

@@ -21,7 +21,11 @@ router.get('/stream', authenticateToken, async (req: AuthenticatedRequest, res: 
 
   // Send heartbeat every 30s to keep connection alive
   const heartbeat = setInterval(() => {
-    res.write(': heartbeat\n\n');
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
   }, 30000);
 
   // Cleanup on disconnect
@@ -50,16 +54,6 @@ router.get('/unread-count', authenticateToken, async (req: AuthenticatedRequest,
   }
 });
 
-router.patch('/:id/read', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    await notificationService.markAsRead(req.user!.uid, req.params.id);
-    return res.status(204).send();
-  } catch (error) {
-    console.error('Error marking notification as read:', error);
-    return res.status(500).json({ error: 'Failed to mark notification as read' });
-  }
-});
-
 router.patch('/read-all', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await notificationService.markAllAsRead(req.user!.uid);
@@ -67,6 +61,16 @@ router.patch('/read-all', authenticateToken, async (req: AuthenticatedRequest, r
   } catch (error) {
     console.error('Error marking all notifications as read:', error);
     return res.status(500).json({ error: 'Failed to mark all notifications as read' });
+  }
+});
+
+router.patch('/:id/read', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await notificationService.markAsRead(req.user!.uid, req.params.id);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    return res.status(500).json({ error: 'Failed to mark notification as read' });
   }
 });
 

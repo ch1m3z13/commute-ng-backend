@@ -141,7 +141,7 @@ export class GeocodingService {
       raw: data[0],
     };
 
-    this.setCache(query, result);
+    await this.setCache(query, result);
     return result;
   }
 }

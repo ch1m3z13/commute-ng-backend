@@ -2,8 +2,19 @@ import { Router, Response } from 'express';
 import { AuthenticatedRequest, authenticateToken } from '../middleware/auth.js';
 import { chatService } from '../services/chatService.js';
 import { userService } from '../services/userService.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
+
+router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const conversations = await chatService.getConversations(req.user!.uid);
+    return res.json({ conversations });
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    return res.status(500).json({ error: 'Failed to fetch conversations' });
+  }
+});
 
 router.get('/:rideId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -20,7 +31,7 @@ router.get('/:rideId', authenticateToken, async (req: AuthenticatedRequest, res:
   }
 });
 
-router.post('/:rideId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:rideId', authenticateToken, authLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const canAccess = await chatService.canAccessChat(req.params.rideId, req.user!.uid);
     if (!canAccess) {

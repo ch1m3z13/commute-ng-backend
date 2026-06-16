@@ -215,6 +215,17 @@ export class RideService {
     await getDb().prepare('DELETE FROM rides WHERE id = ?').run(rideId);
     return true;
   }
+
+  async getAutoSuggestedRides(passengerUid: string): Promise<Ride[]> {
+    const rows = await getDb().prepare(`
+      SELECT r.*, u.displayName as driverName, u.photoURL as driverPhotoURL
+      FROM rides r
+      LEFT JOIN users u ON r.driverUid = u.uid
+      WHERE r.passengerUid = ? AND r.status = 'auto_suggested'
+      ORDER BY r.matchScore DESC, r.createdAt DESC
+    `).all(passengerUid) as Record<string, unknown>[];
+    return rows.map(toRide);
+  }
 }
 
 export const rideService = new RideService();

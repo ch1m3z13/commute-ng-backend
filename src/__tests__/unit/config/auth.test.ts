@@ -33,12 +33,12 @@ describe('verifyPassword', () => {
 
 describe('signJwt', () => {
   it('returns a string token', () => {
-    const token = signJwt({ uid: 'user1' });
+    const token = signJwt({ uid: 'user1', email: 'test@example.com' });
     expect(typeof token).toBe('string');
   });
 
   it('token contains 3 dot-separated parts', () => {
-    const token = signJwt({ uid: 'user1' });
+    const token = signJwt({ uid: 'user1', email: 'test@example.com' });
     expect(token.split('.')).toHaveLength(3);
   });
 });
@@ -46,9 +46,10 @@ describe('signJwt', () => {
 describe('verifyJwt', () => {
   it('returns decoded payload for valid token', () => {
     const token = signJwt({ uid: 'user1', email: 'test@example.com' });
-    const decoded = verifyJwt(token) as { uid: string; email: string };
-    expect(decoded.uid).toBe('user1');
-    expect(decoded.email).toBe('test@example.com');
+    const decoded = verifyJwt(token);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.uid).toBe('user1');
+    expect(decoded!.email).toBe('test@example.com');
   });
 
   it('returns null for invalid token', () => {
@@ -57,7 +58,13 @@ describe('verifyJwt', () => {
 
   it('returns null for expired token', () => {
     const jwt = require('jsonwebtoken');
-    const token = jwt.sign({ uid: 'user1' }, process.env.JWT_SECRET, { expiresIn: '-1s' });
+    const token = jwt.sign({ uid: 'user1', email: 'test@example.com' }, process.env.JWT_SECRET, { expiresIn: '-1s' });
+    expect(verifyJwt(token)).toBeNull();
+  });
+
+  it('returns null for token missing required fields', () => {
+    const jwt = require('jsonwebtoken');
+    const token = jwt.sign({ uid: 'user1' }, process.env.JWT_SECRET);
     expect(verifyJwt(token)).toBeNull();
   });
 });

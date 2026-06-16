@@ -15,7 +15,7 @@ router.get('/geocode', authenticateToken, async (req: AuthenticatedRequest, res:
       return res.status(400).json({ error: 'q parameter is required' });
     }
     const result = await geocodingService.geocode(q);
-    return res.json({ lat: result.lat, lng: result.lng, displayName: result.displayName });
+    return res.json({ results: [{ lat: result.lat, lng: result.lng, displayName: result.displayName }] });
   } catch (error: any) {
     console.error('Geocoding error:', error);
     return res.status(400).json({ error: error.message || 'Geocoding failed' });
@@ -42,6 +42,27 @@ const createCommuteSchema = z.object({
   destLng: z.number().optional(),
   pickupRadiusMeters: z.number().int().min(500).max(5000).optional(),
   timeFlexibilityMinutes: z.number().int().min(5).max(120).optional(),
+});
+
+const updateCommuteSchema = z.object({
+  startPoint: z.string().min(1).max(200).optional(),
+  destination: z.string().min(1).max(200).optional(),
+  departureTime: z.string().min(1).optional(),
+  seatsAvailable: z.number().int().min(1).max(6).optional(),
+  carMake: z.string().min(1).max(50).optional(),
+  carModel: z.string().min(1).max(50).optional(),
+  carYear: z.string().regex(/^\d{4}$/).optional(),
+  plateNumber: z.string().min(1).max(20).optional(),
+  shift: z.enum(['morning', 'evening']).optional(),
+  recurring: z.boolean().optional(),
+  daysOfWeek: z.array(z.string()).optional(),
+  startLat: z.number().optional(),
+  startLng: z.number().optional(),
+  destLat: z.number().optional(),
+  destLng: z.number().optional(),
+  pickupRadiusMeters: z.number().int().min(500).max(5000).optional(),
+  timeFlexibilityMinutes: z.number().int().min(5).max(120).optional(),
+  status: z.enum(['active', 'completed', 'cancelled']).optional(),
 });
 
 router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
@@ -195,7 +216,12 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
 
 router.patch('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const commute = await commuteService.updateCommute(req.params.id, req.user!.uid, req.body);
+    const parsed = updateCommuteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid input', details: parsed.error.errors });
+    }
+
+    const commute = await commuteService.updateCommute(req.params.id, req.user!.uid, parsed.data);
     if (!commute) {
       return res.status(404).json({ error: 'Commute not found' });
     }

@@ -3,6 +3,7 @@ import { userService } from '../services/userService.js';
 import { buildOAuthRedirectUrl, exchangeOAuthCode, validateOAuthState, OAuthProvider } from '../services/oauthService.js';
 import { signJwt } from '../config/auth.js';
 import { config } from '../config/index.js';
+import { createRefreshToken } from '../services/refreshTokenService.js';
 
 const router = Router();
 
@@ -51,16 +52,21 @@ router.get('/:provider/callback', async (req, res) => {
         provider: profile.provider,
         providerId: profile.providerId,
       });
+      await userService.setEmailVerified(user.uid, true);
     } else if (!user.provider || !user.providerId) {
       await userService.updateUser(user.uid, {
         provider: profile.provider,
         providerId: profile.providerId,
         photoURL: profile.photoURL || user.photoURL,
       });
+      if (!user.emailVerified) {
+        await userService.setEmailVerified(user.uid, true);
+      }
     }
 
     const token = signJwt({ uid: user.uid, email: user.email });
-    const redirectUrl = `${config.frontendBaseUrl}/auth/callback#token=${encodeURIComponent(token)}`;
+    const refreshToken = await createRefreshToken(user.uid);
+    const redirectUrl = `${config.frontendBaseUrl}/auth/callback#token=${encodeURIComponent(token)}&refreshToken=${encodeURIComponent(refreshToken)}`;
     res.redirect(redirectUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'OAuth callback failed';

@@ -8,9 +8,6 @@ export const config = {
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
   frontendBaseUrl: process.env.FRONTEND_BASE_URL || 'http://localhost:3000',
-  smtpHost: process.env.SMTP_HOST || 'live.smtp.mailtrap.io',
-  smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
-  smtpUser: process.env.SMTP_USER || 'api',
-  smtpPass: process.env.SMTP_PASS || '',
-  smtpFrom: process.env.SMTP_FROM || 'noreply@mailtrap.io',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  resendFrom: process.env.RESEND_FROM || 'noreply@commuteng.com',
 };

@@ -21,7 +21,7 @@ describe('authenticateToken', () => {
     authenticateToken(req, res, next);
 
     expect(next).toHaveBeenCalled();
-    expect(req.user).toEqual({ uid: 'user1', email: 'test@test.com' });
+    expect(req.user).toMatchObject({ uid: 'user1', email: 'test@test.com' });
   });
 
   it('returns 401 for missing Authorization header', () => {
@@ -70,7 +70,7 @@ describe('optionalAuth', () => {
     optionalAuth(req, res, next);
 
     expect(next).toHaveBeenCalled();
-    expect(req.user).toEqual({ uid: 'user1', email: 'test@test.com' });
+    expect(req.user).toMatchObject({ uid: 'user1', email: 'test@test.com' });
   });
 
   it('calls next() without req.user when no header', () => {

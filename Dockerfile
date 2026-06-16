@@ -26,7 +26,7 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built assets from builder
 COPY --from=builder /app/dist ./dist
 
-# Create directory for SQLite DB and set permissions
+# Create app directory and set permissions
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app
 
 USER appuser

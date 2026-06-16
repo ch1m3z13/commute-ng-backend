@@ -5,6 +5,7 @@ import { notificationService } from '../services/notificationService.js';
 import { userService } from './../services/userService.js';
 import { commuteService } from './../services/commuteService.js';
 import { geocodingService } from './../services/geocodingService.js';
+import { ratingService } from './../services/ratingService.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -26,6 +27,86 @@ router.get('/my-requests', authenticateToken, async (req: AuthenticatedRequest, 
   } catch (error) {
     console.error('Error fetching requests:', error);
     return res.status(500).json({ error: 'Failed to fetch requests' });
+  }
+});
+
+router.get('/my-suggestions', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const rides = await rideService.getAutoSuggestedRides(req.user!.uid);
+    return res.json({ rides });
+  } catch (error) {
+    console.error('Error fetching suggestions:', error);
+    return res.status(500).json({ error: 'Failed to fetch suggestions' });
+  }
+});
+
+router.patch('/:id/accept-suggestion', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ride = await rideService.getRide(req.params.id);
+    if (!ride) {
+      return res.status(404).json({ error: 'Ride not found' });
+    }
+
+    if (ride.passengerUid !== req.user!.uid) {
+      return res.status(403).json({ error: 'Only the passenger can accept suggestions' });
+    }
+
+    if (ride.status !== 'auto_suggested') {
+      return res.status(400).json({ error: 'Ride is not an auto-suggestion' });
+    }
+
+    const updatedRide = await rideService.acceptRide(req.params.id, ride.driverUid);
+    if (!updatedRide) {
+      return res.status(404).json({ error: 'Ride not found' });
+    }
+
+    const passenger = await userService.getUser(req.user!.uid);
+
+    await notificationService.createNotification(ride.driverUid, {
+      type: 'auto_accepted',
+      rideId: ride.id!,
+      actorUid: req.user!.uid,
+      actorName: passenger?.displayName || 'Passenger',
+      actorPhoto: passenger?.photoURL ?? undefined,
+      startPoint: ride.startPoint,
+      destination: ride.destination,
+      departureTime: ride.departureTime,
+    });
+
+    return res.json(updatedRide);
+  } catch (error: any) {
+    console.error('Error accepting suggestion:', error);
+    if (error.message && error.message.includes('No seats available')) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({ error: 'Failed to accept suggestion' });
+  }
+});
+
+router.patch('/:id/decline-suggestion', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ride = await rideService.getRide(req.params.id);
+    if (!ride) {
+      return res.status(404).json({ error: 'Ride not found' });
+    }
+
+    if (ride.passengerUid !== req.user!.uid) {
+      return res.status(403).json({ error: 'Only the passenger can decline suggestions' });
+    }
+
+    if (ride.status !== 'auto_suggested') {
+      return res.status(400).json({ error: 'Ride is not an auto-suggestion' });
+    }
+
+    const updatedRide = await rideService.cancelRide(req.params.id, req.user!.uid);
+    if (!updatedRide) {
+      return res.status(404).json({ error: 'Ride not found' });
+    }
+
+    return res.json(updatedRide);
+  } catch (error) {
+    console.error('Error declining suggestion:', error);
+    return res.status(500).json({ error: 'Failed to decline suggestion' });
   }
 });
 
@@ -245,6 +326,43 @@ router.patch('/:id/cancel', authenticateToken, async (req: AuthenticatedRequest,
   } catch (error) {
     console.error('Error cancelling ride:', error);
     return res.status(500).json({ error: 'Failed to cancel ride' });
+  }
+});
+
+const rateRideSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(500).optional(),
+});
+
+router.post('/:id/rate', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const parsed = rateRideSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid input', details: parsed.error.errors });
+    }
+
+    const { rating, comment } = parsed.data;
+    const result = await ratingService.rateRide(req.params.id, req.user!.uid, rating, comment);
+    return res.status(201).json(result);
+  } catch (error: any) {
+    console.error('Error rating ride:', error);
+    if (error.message?.includes('Already rated')) {
+      return res.status(409).json({ error: error.message });
+    }
+    if (error.message?.includes('not found') || error.message?.includes('Only ride participants')) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({ error: 'Failed to rate ride' });
+  }
+});
+
+router.get('/:id/rating', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const rating = await ratingService.getRideRating(req.params.id);
+    return res.json({ rating });
+  } catch (error) {
+    console.error('Error fetching rating:', error);
+    return res.status(500).json({ error: 'Failed to fetch rating' });
   }
 });
 

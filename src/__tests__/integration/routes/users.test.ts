@@ -14,7 +14,7 @@ describe('POST /api/users/register', () => {
   it('registers new user and returns token', async () => {
     const res = await request(app)
       .post('/api/users/register')
-      .send({ email: 'new@test.com', password: 'password123', displayName: 'New User' });
+      .send({ email: 'new@test.com', password: 'Password123', displayName: 'New User' });
     expect(res.status).toBe(201);
     expect(res.body.token).toBeDefined();
     expect(res.body.uid).toBeDefined();
@@ -24,7 +24,7 @@ describe('POST /api/users/register', () => {
     await seedUser({ uid: 'u1', email: 'dup@test.com' });
     const res = await request(app)
       .post('/api/users/register')
-      .send({ email: 'dup@test.com', password: 'password123', displayName: 'Dup' });
+      .send({ email: 'dup@test.com', password: 'Password123', displayName: 'Dup' });
     expect(res.status).toBe(409);
   });
 
@@ -87,7 +87,7 @@ describe('GET /api/users/me', () => {
       .get('/api/users/me')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.uid).toBe('u1');
+    expect(res.body.user.uid).toBe('u1');
   });
 
   it('returns 401 without token', async () => {
@@ -125,11 +125,11 @@ describe('GET /api/users/:uid', () => {
       .get('/api/users/u1')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.uid).toBe('u1');
+    expect(res.body.user.uid).toBe('u1');
   });
 
   it('returns 404 for non-existent user', async () => {
-    const token = makeToken('u1');
+    const token = makeToken('nobody');
     const res = await request(app)
       .get('/api/users/nobody')
       .set('Authorization', `Bearer ${token}`);
