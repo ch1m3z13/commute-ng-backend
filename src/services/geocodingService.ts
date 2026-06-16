@@ -52,8 +52,29 @@ export class GeocodingService {
     ).run(normalized, result.lat, result.lng, JSON.stringify(result.raw), new Date().toISOString());
   }
 
-  async geocode(query: string): Promise<GeocodeResult> {
-    // Check cache first
+  async searchLocalLocations(query: string): Promise<GeocodeResult[]> {
+    const normalized = query.trim().toLowerCase();
+    const rows = await getDb().prepare(
+      'SELECT displayName, lat, lng, category FROM locations WHERE displayName ILIKE ? LIMIT 5'
+    ).all([`%${normalized}%`]);
+
+    return rows.map(row => ({
+      lat: row.lat,
+      lng: row.lng,
+      displayName: row.displayName,
+      raw: { category: row.category },
+    }));
+  }
+
+    async geocode(query: string): Promise<GeocodeResult> {
+    // 1. Check local seed locations first (instant)
+    const localResults = await this.searchLocalLocations(query);
+    if (localResults.length > 0) {
+      // Return the first best match from the seed
+      return { ...localResults[0], raw: {} };
+    }
+
+    // 2. Fallback to reactive cache
     const cached = await this.getCache(query);
     if (cached) {
       return {
@@ -105,7 +126,14 @@ export class GeocodingService {
     return result;
   }
 
-    async autocomplete(query: string): Promise<GeocodeResult[]> {
+      async autocomplete(query: string): Promise<GeocodeResult[]> {
+    // 1. Search local high-value locations first (instant)
+    const localResults = await this.searchLocalLocations(query);
+    if (localResults.length >= 5) {
+      return localResults;
+    }
+
+    // 2. If not enough local matches, fetch from Nominatim (throttled)
     await this.throttle();
 
     const params = new URLSearchParams({
@@ -118,38 +146,35 @@ export class GeocodingService {
       bounded: '0',
     });
 
-    const url = `${NOMINATIM_BASE}/search?${params.toString()}`;
+    const url = `/search?`;
 
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
     });
 
     if (!response.ok) {
-      throw new Error(`Autocomplete failed: HTTP ${response.status}`);
+      throw new Error(`Autocomplete failed: HTTP `);
     }
 
     const data = await response.json() as Array<{ lat: string; lon: string; display_name: string; [key: string]: unknown }>;
 
-    return (data || []).map(item => ({
+    const remoteResults = (data || []).map(item => ({
       lat: parseFloat(item.lat),
       lng: parseFloat(item.lon),
       displayName: item.display_name,
       raw: item,
     }));
+
+    // Merge local results with remote results, avoiding duplicates
+    const combined = [...localResults];
+    for (const remote of remoteResults) {
+      if (!combined.some(local => local.displayName === remote.displayName)) {
+        combined.push(remote);
+      }
+    }
+
+    return combined.slice(0, 5);
   }
-
-  async geocodeStrict(query: string): Promise<GeocodeResult> {
-    await this.throttle();
-
-    const params = new URLSearchParams({
-      q: query,
-      format: 'json',
-      limit: '5',
-      countrycodes: 'ng',
-      'accept-language': 'en',
-      viewbox: '6.8,3.0,7.6,9.4',
-      bounded: '1',
-    });
 
     const url = `${NOMINATIM_BASE}/search?${params.toString()}`;
 
