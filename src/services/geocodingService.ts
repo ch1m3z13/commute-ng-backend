@@ -139,7 +139,6 @@ export class GeocodingService {
   }
 
   async geocodeStrict(query: string): Promise<GeocodeResult> {
-async geocodeStrict(query: string): Promise<GeocodeResult> {
     await this.throttle();
 
     const params = new URLSearchParams({
