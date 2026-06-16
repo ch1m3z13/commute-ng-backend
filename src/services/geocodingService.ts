@@ -105,7 +105,41 @@ export class GeocodingService {
     return result;
   }
 
+    async autocomplete(query: string): Promise<GeocodeResult[]> {
+    await this.throttle();
+
+    const params = new URLSearchParams({
+      q: query,
+      format: 'json',
+      limit: '5',
+      countrycodes: 'ng',
+      'accept-language': 'en',
+      viewbox: '6.8,3.0,7.6,9.4',
+      bounded: '0',
+    });
+
+    const url = `${NOMINATIM_BASE}/search?${params.toString()}`;
+
+    const response = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Autocomplete failed: HTTP ${response.status}`);
+    }
+
+    const data = await response.json() as Array<{ lat: string; lon: string; display_name: string; [key: string]: unknown }>;
+
+    return (data || []).map(item => ({
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      displayName: item.display_name,
+      raw: item,
+    }));
+  }
+
   async geocodeStrict(query: string): Promise<GeocodeResult> {
+async geocodeStrict(query: string): Promise<GeocodeResult> {
     await this.throttle();
 
     const params = new URLSearchParams({

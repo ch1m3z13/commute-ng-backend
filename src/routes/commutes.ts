@@ -7,6 +7,21 @@ import { z } from 'zod';
 
 const router = Router();
 
+// Autocomplete endpoint — get location suggestions
+router.get('/autocomplete', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: 'q parameter is required' });
+    }
+    const results = await geocodingService.autocomplete(q);
+    return res.json({ results });
+  } catch (error: any) {
+    console.error('Autocomplete error:', error);
+    return res.status(400).json({ error: error.message || 'Autocomplete failed' });
+  }
+});
+
 // Geocoding endpoint — convert address to lat/lng
 router.get('/geocode', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
