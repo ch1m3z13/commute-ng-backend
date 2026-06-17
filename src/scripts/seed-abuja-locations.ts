@@ -1,101 +1,58 @@
 /**
- * Abuja location seed data for geocache.
- * Run this once to populate the geocache table with common Abuja locations.
+ * Abuja location seed data — hardcoded geocodes.
+ * Run once to populate the locations table with common Abuja suburbs and CBD landmarks.
  * Usage: npx tsx src/scripts/seed-abuja-locations.ts
  */
 
+import 'dotenv/config';
 import { initializeDatabase, getDb } from '../config/database.js';
-import { geocodingService } from '../services/geocodingService.js';
+import { LOCATIONS } from '../data/abujaLocations.js';
 
-const ABUJA_LOCATIONS = [
-  // Areas / Districts
-  'Maitama, Abuja',
-  'Wuse, Abuja',
-  'Wuse 2, Abuja',
-  'Garki, Abuja',
-  'Garki 1, Abuja',
-  'Garki 2, Abuja',
-  'Asokoro, Abuja',
-  'Utako, Abuja',
-  'Kubwa, Abuja',
-  'Nyanya, Abuja',
-  'Lugbe, Abuja',
-  'Jahi, Abuja',
-  'Life Camp, Abuja',
-  'Galadimawa, Abuja',
-  'Apo, Abuja',
-  'Karsana, Abuja',
-  'Lokogoma, Abuja',
-  'Dakibiyu, Abuja',
-  'Wuye, Abuja',
-  'Durumi, Abuja',
-  'Mabushi, Abuja',
-  'Katampe, Abuja',
-  'Kabusa, Abuja',
-  'Idu, Abuja',
-  'Karmo, Abuja',
-  'Dei-Dei, Abuja',
-  'Suleja, Abuja',
-  'Madalla, Abuja',
-
-  // Major offices and landmarks
-  'Nigerian Communications Commission, Maitama, Abuja',
-  'Central Business District, Abuja',
-  'Nnamdi Azikiwe International Airport, Abuja',
-  'National Assembly, Abuja',
-  'Aso Rock Presidential Villa, Abuja',
-  'CBN Headquarters, Abuja',
-  'NNPC Towers, Abuja',
-  'NAFDAC Headquarters, Abuja',
-  'EFCC Headquarters, Abuja',
-  'ICPC Headquarters, Abuja',
-  'Nigerian Airforce Base, Abuja',
-  'Nigerian Army Headquarters, Abuja',
-  'Police Headquarters, Abuja',
-  'Nigerian Stock Exchange, Abuja',
-  'Abuja International Conference Centre, Abuja',
-  'National Stadium, Abuja',
-  'Transcorp Hilton, Abuja',
-  'Sheraton Hotel, Abuja',
-  'Nicon Luxury Hotel, Abuja',
-
-  // Estates
-  'Lugbe Estate, Abuja',
-  'Lokogoma Estate, Abuja',
-  'Apo Legislative Quarters, Abuja',
-  'Mabushi District, Abuja',
-  'Kubwa Extension, Abuja',
-];
+function normalizeQuery(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, ' ');
+}
 
 async function seed() {
-  initializeDatabase();
+  await initializeDatabase();
   const db = getDb();
 
-  console.log(`Seeding ${ABUJA_LOCATIONS.length} Abuja locations...`);
+  console.log(`Seeding ${LOCATIONS.length} Abuja locations (hardcoded geocodes)...`);
 
-  let success = 0;
-  let failed = 0;
+  let inserted = 0;
   let skipped = 0;
+  let failed = 0;
 
-  for (const location of ABUJA_LOCATIONS) {
-    // Check if already cached
-    const existing = await db.prepare('SELECT 1 FROM geocache WHERE query = ?').get(location.toLowerCase().trim());
-    if (existing) {
-      skipped++;
-      continue;
-    }
-
+  for (const loc of LOCATIONS) {
+    const normalized = normalizeQuery(loc.name);
     try {
-      const result = await geocodingService.geocode(location);
-      console.log(`  ✓ ${location} → (${result.lat.toFixed(4)}, ${result.lng.toFixed(4)})`);
-      success++;
-    } catch (err: any) {
-      console.log(`  ✗ ${location} → ${err.message}`);
-      failed++;
+      // Upsert into locations table
+      await db.prepare(
+        'INSERT INTO locations (displayName, lat, lng, category) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+      ).run(loc.name, loc.lat, loc.lng, loc.cat);
+
+      // Also upsert into geocache for fast lookup
+      await db.prepare(
+        'INSERT INTO geocache (query, lat, lng, raw_json, createdAt) VALUES (?, ?, ?, ?, ?) ON CONFLICT (query) DO UPDATE SET lat = EXCLUDED.lat, lng = EXCLUDED.lng, raw_json = EXCLUDED.raw_json, createdAt = EXCLUDED.createdAt'
+      ).run(normalized, loc.lat, loc.lng, JSON.stringify({ display_name: loc.name }), new Date().toISOString());
+
+      console.log(`  ✓ ${loc.name} → (${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}) [${loc.cat}]`);
+      inserted++;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // "already exists" is fine — treat as skipped
+      if (msg.includes('duplicate') || msg.includes('already exists')) {
+        skipped++;
+      } else {
+        console.log(`  ✗ ${loc.name} → ${msg}`);
+        failed++;
+      }
     }
   }
 
-  console.log(`\nDone: ${success} seeded, ${skipped} skipped (already cached), ${failed} failed`);
+  console.log(`\nDone: ${inserted} seeded, ${skipped} skipped (already exist), ${failed} failed`);
 }
 
-seed().catch(console.error);
+seed().catch((err) => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

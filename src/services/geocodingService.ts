@@ -59,14 +59,14 @@ export class GeocodingService {
     ).all([`%${normalized}%`]);
 
     return rows.map(row => ({
-      lat: row.lat,
-      lng: row.lng,
-      displayName: row.displayName,
-      raw: { category: row.category },
+      lat: Number(row.lat),
+      lng: Number(row.lng),
+      displayName: String(row.displayName),
+      raw: { category: String(row.category) },
     }));
   }
 
-    async geocode(query: string): Promise<GeocodeResult> {
+  async geocode(query: string): Promise<GeocodeResult> {
     // 1. Check local seed locations first (instant)
     const localResults = await this.searchLocalLocations(query);
     if (localResults.length > 0) {
@@ -126,7 +126,7 @@ export class GeocodingService {
     return result;
   }
 
-      async autocomplete(query: string): Promise<GeocodeResult[]> {
+  async autocomplete(query: string): Promise<GeocodeResult[]> {
     // 1. Search local high-value locations first (instant)
     const localResults = await this.searchLocalLocations(query);
     if (localResults.length >= 5) {
@@ -146,14 +146,14 @@ export class GeocodingService {
       bounded: '0',
     });
 
-    const url = `/search?`;
+    const url = `${NOMINATIM_BASE}/search?${params.toString()}`;
 
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
     });
 
     if (!response.ok) {
-      throw new Error(`Autocomplete failed: HTTP `);
+      throw new Error(`Autocomplete failed: HTTP ${response.status}`);
     }
 
     const data = await response.json() as Array<{ lat: string; lon: string; display_name: string; [key: string]: unknown }>;
@@ -174,33 +174,6 @@ export class GeocodingService {
     }
 
     return combined.slice(0, 5);
-  }
-
-    const url = `${NOMINATIM_BASE}/search?${params.toString()}`;
-
-    const response = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Geocoding failed: HTTP ${response.status}`);
-    }
-
-    const data = await response.json() as Array<{ lat: string; lon: string; display_name: string; [key: string]: unknown }>;
-
-    if (!data || data.length === 0) {
-      throw new Error(`Address not found within Abuja: "${query}". Please provide a more specific address.`);
-    }
-
-    const result: GeocodeResult = {
-      lat: parseFloat(data[0].lat),
-      lng: parseFloat(data[0].lon),
-      displayName: data[0].display_name,
-      raw: data[0],
-    };
-
-    await this.setCache(query, result);
-    return result;
   }
 }
 
