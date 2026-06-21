@@ -8,6 +8,9 @@ import {
   chatRouter,
   verificationRouter,
   authRouter,
+  passwordResetRouter,
+  refreshRouter,
+  adminRouter,
 } from '../../routes/index.js';
 
 export function createTestApp() {
@@ -20,6 +23,9 @@ export function createTestApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/chat', chatRouter);
   app.use('/api/verification', verificationRouter);
+  app.use('/api/password', passwordResetRouter);
+  app.use('/api/refresh', refreshRouter);
+  app.use('/api/admin', adminRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

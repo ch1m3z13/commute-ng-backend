@@ -59,10 +59,10 @@ export class GeocodingService {
     ).all([`%${normalized}%`]);
 
     return rows.map(row => ({
-      lat: Number(row.lat),
-      lng: Number(row.lng),
-      displayName: String(row.displayName),
-      raw: { category: String(row.category) },
+      lat: row.lat as number,
+      lng: row.lng as number,
+      displayName: row.displayName as string,
+      raw: { category: row.category },
     }));
   }
 
