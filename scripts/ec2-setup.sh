@@ -50,7 +50,7 @@ OAUTH_CALLBACK_BASE_URL=http://YOUR_EC2_PUBLIC_IP
 
 # Resend (email)
 RESEND_API_KEY=CHANGE_ME
-RESEND_FROM=noreply@commuteng.com
+RESEND_FROM=noreply@yourdomain.com
 
 # Google OAuth (optional for MVP)
 GOOGLE_CLIENT_ID=
