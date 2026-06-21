@@ -17,7 +17,7 @@ on:
           - production
 
 env:
-  DEPLOY_DIR: /home/ubuntu/commute-ng
+  DEPLOY_DIR: /home/ubuntu
   COMPOSE_PROJECT: commuteng
 
 jobs:
