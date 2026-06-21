@@ -1,0 +1,78 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  repository_dispatch:
+    types: [frontend-push]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  DEPLOY_DIR: /home/ubuntu/commute-ng
+  COMPOSE_PROJECT: commuteng
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "=== Deploying CommuteNG ==="
+            echo "Triggered by: ${{ github.event_name }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+
+            cd ${{ env.DEPLOY_DIR }}
+
+            # Pull latest for both repos
+            echo "--- Pulling backend ---"
+            cd commute-ng-backend
+            git fetch origin
+            git reset --hard origin/master
+            cd ..
+
+            echo "--- Pulling frontend ---"
+            cd commute-ng-frontend
+            git fetch origin
+            git reset --hard origin/master
+            cd ..
+
+            # Copy docker-compose if it exists in backend repo
+            if [ -f commute-ng-backend/docker-compose.prod.yml ]; then
+              cp commute-ng-backend/docker-compose.prod.yml docker-compose.yml
+            fi
+
+            # Rebuild and restart
+            echo "--- Building and restarting containers ---"
+            docker compose down
+            docker compose build --no-cache
+            docker compose up -d
+
+            # Wait for health check
+            echo "--- Waiting for services to start ---"
+            sleep 10
+
+            # Verify containers are running
+            docker compose ps
+
+            echo "=== Deploy complete ==="
