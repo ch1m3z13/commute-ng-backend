@@ -40,6 +40,14 @@ app.use(cors({
 app.use(morgan('dev'));
 app.use(express.json());
 
+// Prevent browser from caching user-specific API responses
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
