@@ -12,6 +12,25 @@ import {
 } from '../services/verificationService.js';
 import { z } from 'zod';
 import { strictAuthLimiter, authLimiter } from '../middleware/rateLimiter.js';
+import multer from 'multer';
+import path from 'node:path';
+
+const storage = multer.diskStorage({
+  destination: path.join(__dirname, '..', '..', 'uploads'),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    cb(null, `${(req as AuthenticatedRequest).user!.uid}-${Date.now()}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 const router = Router();
 
@@ -23,10 +42,6 @@ const verifyOtpSchema = z.object({
 
 const validateNinSchema = z.object({
   nin: z.string().min(1),
-});
-
-const submitIdCardSchema = z.object({
-  idCardUrl: z.string().url('Invalid URL format').or(z.literal('')),
 });
 
 // ─── GET /api/verification/status ─────────────────────────────────────────────
@@ -146,27 +161,23 @@ router.post('/nin/validate', authenticateToken, authLimiter, async (req: Authent
 });
 
 // ─── POST /api/verification/id-card/submit ────────────────────────────────────
-// Submits a government ID card URL for admin review. Sets status to 'pending'.
+// Uploads a government ID card image for admin review. Sets status to 'pending'.
 
-router.post('/id-card/submit', authenticateToken, authLimiter, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/id-card/submit', authenticateToken, authLimiter, upload.single('idCard'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const parsed = submitIdCardSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid URL', details: parsed.error.errors });
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: 'ID card image is required. Upload a JPEG, PNG, or WebP image (max 5MB).' });
     }
 
-    const { idCardUrl } = parsed.data;
-
-    if (!idCardUrl) {
-      return res.status(400).json({ error: 'ID card URL is required for full verification' });
-    }
-
+    const idCardUrl = `/uploads/${file.filename}`;
     await userService.updateVerificationStatus(req.user!.uid, 'pending', { idCardUrl });
 
     return res.json({
       message: 'ID card submitted for review',
       idCardStatus: 'pending_review',
       verificationStatus: 'pending',
+      idCardUrl,
     });
   } catch (error) {
     console.error('Error submitting ID card:', error);

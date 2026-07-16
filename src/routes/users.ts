@@ -5,7 +5,6 @@ import { hashPassword, verifyPassword, signJwt } from '../config/auth.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { authLimiter, strictAuthLimiter } from '../middleware/rateLimiter.js';
-import { generateAndStoreOtp, sendOtpEmail } from '../services/verificationService.js';
 import { createRefreshToken } from '../services/refreshTokenService.js';
 import { ratingService } from '../services/ratingService.js';
 
@@ -17,7 +16,6 @@ const registerSchema = z.object({
     .regex(/[A-Z]/, { message: 'Password must contain at least one uppercase letter' })
     .regex(/[a-z]/, { message: 'Password must contain at least one lowercase letter' })
     .regex(/[0-9]/, { message: 'Password must contain at least one number' }),
-  displayName: z.string().min(1).max(100).transform(val => val.trim()),
 });
 
 const loginSchema = z.object({
@@ -61,7 +59,7 @@ router.post('/register', authLimiter, async (req, res: Response) => {
       return res.status(400).json({ error: 'Invalid input', details: parsed.error.errors });
     }
 
-    const { email, password, displayName } = parsed.data;
+    const { email, password } = parsed.data;
 
     const existing = await userService.getUserByEmail(email);
     if (existing) {
@@ -70,18 +68,13 @@ router.post('/register', authLimiter, async (req, res: Response) => {
 
     const passwordHash = await hashPassword(password);
     const uid = randomUUID();
-    await userService.createUser(uid, { email, displayName, passwordHash });
+    await userService.createUser(uid, { email, passwordHash });
+    await userService.setEmailVerified(uid, true);
 
     const token = signJwt({ uid, email });
-
-    const otp = await generateAndStoreOtp(uid);
-    sendOtpEmail(email, otp).catch(err => {
-      console.error('[Email] Failed to send OTP:', err.message);
-    });
-
     const refreshToken = await createRefreshToken(uid);
 
-    return res.status(201).json({ token, uid, refreshToken, emailVerificationRequired: true });
+    return res.status(201).json({ token, uid, refreshToken });
   } catch (error) {
     console.error('Error registering user:', error);
     return res.status(500).json({ error: 'Failed to register user' });

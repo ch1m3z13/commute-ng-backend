@@ -145,7 +145,8 @@ export async function initializeDatabase(): Promise<void> {
     throw new Error('Supabase database URL is required in SUPABASE_DATABASE_URL or DATABASE_URL');
   }
 
-  pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+  const useSsl = connectionString.includes('sslmode=require') || connectionString.includes('supabase');
+  pool = new Pool({ connectionString, ssl: useSsl ? { rejectUnauthorized: false } : undefined });
 
   const createTableSQL = [
     `CREATE TABLE IF NOT EXISTS geocache (query TEXT PRIMARY KEY, lat DOUBLE PRECISION NOT NULL, lng DOUBLE PRECISION NOT NULL, raw_json TEXT, createdAt TIMESTAMP WITH TIME ZONE)`,

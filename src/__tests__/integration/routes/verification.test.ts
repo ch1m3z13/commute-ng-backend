@@ -84,23 +84,24 @@ describe('POST /api/verification/id-card/submit', () => {
     await resetDatabase();
   });
 
-  it('submits ID card URL', async () => {
+  it('accepts a valid image upload', async () => {
     await seedUser({ uid: 'u1' });
     const token = makeToken('u1');
+    const buffer = Buffer.from('fake-jpeg-data');
     const res = await request(app)
       .post('/api/verification/id-card/submit')
       .set('Authorization', `Bearer ${token}`)
-      .send({ idCardUrl: 'https://example.com/id.jpg' });
+      .attach('idCard', buffer, { filename: 'id.jpg', contentType: 'image/jpeg' });
     expect(res.status).toBe(200);
+    expect(res.body.idCardStatus).toBe('pending_review');
   });
 
-  it('returns 400 for invalid URL', async () => {
+  it('returns 400 when no file is attached', async () => {
     await seedUser({ uid: 'u1' });
     const token = makeToken('u1');
     const res = await request(app)
       .post('/api/verification/id-card/submit')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ idCardUrl: 'not-a-url' });
+      .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(400);
   });
 });

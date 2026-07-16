@@ -3,3 +3,8 @@ dist/
 .env
 *.log
 .DS_Store
+uploads/
+
+# evo optimizer workspace (experiment worktrees, scores, dashboard) -- never commit
+.evo/
+scores.json

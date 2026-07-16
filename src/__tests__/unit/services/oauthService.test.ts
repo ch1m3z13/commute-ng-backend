@@ -7,8 +7,10 @@ import {
 
 vi.mock('../../../config/index.js', () => ({
   config: {
-    googleClientId: 'test-google-id',
-    googleClientSecret: 'test-secret',
+    cognitoDomain: 'test-pool.auth.eu-west-1.amazoncognito.com',
+    cognitoClientId: 'test-cognito-client-id',
+    cognitoClientSecret: 'test-cognito-secret',
+    cognitoRegion: 'eu-west-1',
     oauthCallbackBaseUrl: 'http://localhost:3001/api/auth',
   },
 }));
@@ -45,12 +47,15 @@ describe('validateOAuthState', () => {
 });
 
 describe('buildOAuthRedirectUrl', () => {
-  it('builds Google URL with correct client_id', () => {
+  it('builds Cognito authorize URL with correct client_id', () => {
     const url = buildOAuthRedirectUrl('google');
-    expect(url).toContain('accounts.google.com');
-    expect(url).toContain('client_id=test-google-id');
+    expect(url).toContain('test-pool.auth.eu-west-1.amazoncognito.com');
+    expect(url).toContain('/oauth2/authorize');
+    expect(url).toContain('client_id=test-cognito-client-id');
     expect(url).toContain('response_type=code');
+    expect(url).toContain('identity_provider=Google');
     expect(url).toContain('scope=openid');
+    expect(url).toContain('redirect_uri=');
   });
 
   it('throws for unsupported provider', () => {
